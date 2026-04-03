@@ -1,8 +1,66 @@
+
+/*
+-- Run these once in MariaDB before launching the updated app:
+ALTER TABLE rooms 
+  ADD COLUMN IF NOT EXISTS guest_email VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS guest_address VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS aadhaar_image LONGBLOB,
+  ADD COLUMN IF NOT EXISTS checkout_time VARCHAR(30),
+  ADD COLUMN IF NOT EXISTS priority BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE checkout_history
+  ADD COLUMN IF NOT EXISTS room_type VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS contact_number VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS guest_email VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS guest_address VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS check_in_date VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS price_per_night DOUBLE DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS nights INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS subtotal DOUBLE DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tax_amount DOUBLE DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS gst_rate DOUBLE DEFAULT 18,
+  ADD COLUMN IF NOT EXISTS aadhaar_image LONGBLOB,
+  ADD COLUMN IF NOT EXISTS booked_at DATETIME;
+
+CREATE TABLE IF NOT EXISTS menu_items (
+  item_code VARCHAR(20) PRIMARY KEY,
+  item_name VARCHAR(100),
+  category VARCHAR(50),
+  unit_price DOUBLE
+);
+
+CREATE TABLE IF NOT EXISTS restaurant_orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  room_number VARCHAR(10),
+  guest_name VARCHAR(100),
+  item_code VARCHAR(20),
+  item_name VARCHAR(100),
+  category VARCHAR(50),
+  unit_price DOUBLE,
+  quantity INT,
+  total_price DOUBLE,
+  order_time DATETIME,
+  settled BOOLEAN DEFAULT FALSE
+);
+*/
 import javafx.application.Application;
 import javafx.beans.property.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Properties;
+
+import jakarta.mail.Authenticator;
+import jakarta.mail.Message;
+import jakarta.mail.Multipart;
+import jakarta.mail.PasswordAuthentication;
+import jakarta.mail.Session;
+import jakarta.mail.Transport;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -10,6 +68,8 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.effect.DropShadow;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.LinearGradient;
@@ -20,15 +80,30 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
+import javafx.stage.FileChooser;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import javafx.animation.*;
+import javafx.util.Duration;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.image.WritableImage;
 import java.sql.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class HotelManagement extends Application {
 
@@ -67,17 +142,32 @@ public class HotelManagement extends Application {
         private final StringProperty contactNumber = new SimpleStringProperty();
         private final ObjectProperty<LocalDate> checkInDate = new SimpleObjectProperty<>();
         private final ObjectProperty<LocalDate> expectedCheckOutDate = new SimpleObjectProperty<>();
+        private final StringProperty guestEmail = new SimpleStringProperty();
+        private final StringProperty guestAddress = new SimpleStringProperty();
+        private byte[] aadhaarImage;
+        private final StringProperty checkOutTime = new SimpleStringProperty();
 
-        public Room(String no, String type, double price, String status, String name, String contact, LocalDate checkIn,
-                LocalDate checkOut) {
+        // Used when fetching from DB
+        public Room(String no, String t, double p, String s, String c, String pNo, String email, String addr,
+                LocalDate in,
+                LocalDate expectedOut, byte[] aadhaar, String checkoutTime) {
             this.roomNumber.set(no);
-            this.roomType.set(type);
-            this.price.set(price);
-            this.status.set(status);
-            this.customerName.set(name);
-            this.contactNumber.set(contact);
-            this.checkInDate.set(checkIn);
-            this.expectedCheckOutDate.set(checkOut);
+            this.roomType.set(t);
+            this.price.set(p);
+            this.status.set(s);
+            this.customerName.set(c);
+            this.contactNumber.set(pNo);
+            this.guestEmail.set(email);
+            this.guestAddress.set(addr);
+            this.checkInDate.set(in);
+            this.expectedCheckOutDate.set(expectedOut);
+            this.aadhaarImage = aadhaar;
+            this.checkOutTime.set(checkoutTime);
+        }
+
+        // Used when initializing statically
+        public Room(String no, String t, double p) {
+            this(no, t, p, "Available", "", "", "", "", null, null, null, null);
         }
 
         public String getRoomNumber() {
@@ -144,15 +234,43 @@ public class HotelManagement extends Application {
             return checkInDate;
         }
 
+        public String getGuestEmail() {
+            return guestEmail.get();
+        }
+
+        public StringProperty guestEmailProperty() {
+            return guestEmail;
+        }
+
+        public String getGuestAddress() {
+            return guestAddress.get();
+        }
+
+        public StringProperty guestAddressProperty() {
+            return guestAddress;
+        }
+
         public void setStatus(String s) {
             this.status.set(s);
         }
 
-        public void setOccupancy(String n, String c, LocalDate in, LocalDate out) {
+        public byte[] getAadhaarImage() {
+            return aadhaarImage;
+        }
+
+        public void setAadhaarImage(byte[] img) {
+            this.aadhaarImage = img;
+        }
+
+        public void setOccupancy(String n, String c, String email, String addr, LocalDate in, LocalDate out,
+                byte[] aadhaarBytes) {
             this.customerName.set(n);
             this.contactNumber.set(c);
+            this.guestEmail.set(email);
+            this.guestAddress.set(addr);
             this.checkInDate.set(in);
             this.expectedCheckOutDate.set(out);
+            this.aadhaarImage = aadhaarBytes;
         }
 
         public void extendStay(int days) {
@@ -161,12 +279,51 @@ public class HotelManagement extends Application {
             }
         }
 
+        public String getCheckOutTime() {
+            return checkOutTime.get();
+        }
+
+        public StringProperty checkOutTimeProperty() {
+            return checkOutTime;
+        }
+
+        public void setCheckingOut() {
+            this.customerName.set("");
+            this.customerName.set("");
+            this.contactNumber.set("");
+            this.guestEmail.set("");
+            this.guestAddress.set("");
+            this.checkInDate.set(null);
+            this.expectedCheckOutDate.set(null);
+            this.aadhaarImage = null;
+            this.status.set("Cleaning");
+            this.checkOutTime.set(LocalDate.now().toString());
+        }
+
         public void clearOccupancy() {
             this.customerName.set("");
             this.contactNumber.set("");
+            this.guestEmail.set("");
+            this.guestAddress.set("");
             this.checkInDate.set(null);
             this.expectedCheckOutDate.set(null);
+            this.aadhaarImage = null;
             this.status.set("Available");
+            this.checkOutTime.set(null);
+        }
+
+        private final BooleanProperty priority = new SimpleBooleanProperty(false);
+
+        public boolean isPriority() {
+            return priority.get();
+        }
+
+        public BooleanProperty priorityProperty() {
+            return priority;
+        }
+
+        public void setPriority(boolean p) {
+            this.priority.set(p);
         }
 
         public String toCSV() {
@@ -177,18 +334,280 @@ public class HotelManagement extends Application {
         }
     }
 
+    /*
+     * ALTER TABLE checkout_history
+     * ADD COLUMN room_type VARCHAR(20),
+     * ADD COLUMN contact_number VARCHAR(20),
+     * ADD COLUMN check_in_date VARCHAR(20),
+     * ADD COLUMN price_per_night DOUBLE,
+     * ADD COLUMN nights INT,
+     * ADD COLUMN subtotal DOUBLE,
+     * ADD COLUMN tax_amount DOUBLE,
+     * ADD COLUMN gst_rate DOUBLE,
+     * ADD COLUMN aadhaar_image LONGBLOB,
+     * ADD COLUMN booked_at DATETIME;
+     */
     public static class HistoryRecord {
 
         private final StringProperty roomNumber = new SimpleStringProperty();
+        private final StringProperty roomType = new SimpleStringProperty();
         private final StringProperty guestName = new SimpleStringProperty();
-        private final StringProperty checkOut = new SimpleStringProperty();
+        private final StringProperty contactNumber = new SimpleStringProperty();
+        private final StringProperty guestEmail = new SimpleStringProperty();
+        private final StringProperty guestAddress = new SimpleStringProperty();
+        private final StringProperty checkInDate = new SimpleStringProperty();
+        private final StringProperty checkOutDate = new SimpleStringProperty();
+        private final DoubleProperty pricePerNight = new SimpleDoubleProperty();
+        private final LongProperty nights = new SimpleLongProperty();
+        private final DoubleProperty subtotal = new SimpleDoubleProperty();
+        private final DoubleProperty taxAmount = new SimpleDoubleProperty();
+        private final DoubleProperty gstRate = new SimpleDoubleProperty();
         private final DoubleProperty totalPaid = new SimpleDoubleProperty();
+        private final ObjectProperty<LocalDateTime> bookedAt = new SimpleObjectProperty<>();
+        private byte[] aadhaarImage;
 
-        public HistoryRecord(String room, String guest, String out, double paid) {
-            this.roomNumber.set(room);
+        public HistoryRecord(String roomNo, String type, String guest, String contact, String email, String address,
+                String inDate, String outDate,
+                double price, long nts, double sub, double tax, double gst, double total,
+                LocalDateTime booked, byte[] aadhaar) {
+            roomNumber.set(roomNo);
+            roomType.set(type);
+            guestName.set(guest);
+            contactNumber.set(contact);
+            guestEmail.set(email);
+            guestAddress.set(address);
+            checkInDate.set(inDate);
+            checkOutDate.set(outDate);
+            pricePerNight.set(price);
+            nights.set(nts);
+            subtotal.set(sub);
+            taxAmount.set(tax);
+            gstRate.set(gst);
+            totalPaid.set(total);
+            bookedAt.set(booked);
+            this.aadhaarImage = aadhaar;
+        }
+
+        public String getRoomNumber() {
+            return roomNumber.get();
+        }
+
+        public StringProperty roomNumberProperty() {
+            return roomNumber;
+        }
+
+        public String getRoomType() {
+            return roomType.get();
+        }
+
+        public StringProperty roomTypeProperty() {
+            return roomType;
+        }
+
+        public String getGuestName() {
+            return guestName.get();
+        }
+
+        public StringProperty guestNameProperty() {
+            return guestName;
+        }
+
+        public String getContactNumber() {
+            return contactNumber.get();
+        }
+
+        public StringProperty contactNumberProperty() {
+            return contactNumber;
+        }
+
+        public String getGuestEmail() {
+            return guestEmail.get();
+        }
+
+        public StringProperty guestEmailProperty() {
+            return guestEmail;
+        }
+
+        public String getGuestAddress() {
+            return guestAddress.get();
+        }
+
+        public StringProperty guestAddressProperty() {
+            return guestAddress;
+        }
+
+        public String getCheckInDate() {
+            return checkInDate.get();
+        }
+
+        public StringProperty checkInDateProperty() {
+            return checkInDate;
+        }
+
+        public String getCheckOutDate() {
+            return checkOutDate.get();
+        }
+
+        public StringProperty checkOutDateProperty() {
+            return checkOutDate;
+        }
+
+        public double getPricePerNight() {
+            return pricePerNight.get();
+        }
+
+        public DoubleProperty pricePerNightProperty() {
+            return pricePerNight;
+        }
+
+        public long getNights() {
+            return nights.get();
+        }
+
+        public LongProperty nightsProperty() {
+            return nights;
+        }
+
+        public double getSubtotal() {
+            return subtotal.get();
+        }
+
+        public DoubleProperty subtotalProperty() {
+            return subtotal;
+        }
+
+        public double getTaxAmount() {
+            return taxAmount.get();
+        }
+
+        public DoubleProperty taxAmountProperty() {
+            return taxAmount;
+        }
+
+        public double getGstRate() {
+            return gstRate.get();
+        }
+
+        public DoubleProperty gstRateProperty() {
+            return gstRate;
+        }
+
+        public double getTotalPaid() {
+            return totalPaid.get();
+        }
+
+        public DoubleProperty totalPaidProperty() {
+            return totalPaid;
+        }
+
+        public LocalDateTime getBookedAt() {
+            return bookedAt.get();
+        }
+
+        public ObjectProperty<LocalDateTime> bookedAtProperty() {
+            return bookedAt;
+        }
+
+        public byte[] getAadhaarImage() {
+            return aadhaarImage;
+        }
+
+        public void setAadhaarImage(byte[] image) {
+            this.aadhaarImage = image;
+        }
+
+        public String toCSV() {
+            return String.join(",", getRoomNumber(), getRoomType(), getGuestName(), getContactNumber(), getGuestEmail(),
+                    getGuestAddress().replace(",", " "),
+                    getCheckInDate(), getCheckOutDate(), String.valueOf(getNights()),
+                    String.valueOf(getPricePerNight()), String.valueOf(getSubtotal()),
+                    String.valueOf(getGstRate()), String.valueOf(getTaxAmount()),
+                    String.valueOf(getTotalPaid()),
+                    getBookedAt() != null ? getBookedAt().format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm"))
+                            : "null");
+        }
+    }
+
+    public static class MenuItem {
+        private final StringProperty itemCode = new SimpleStringProperty();
+        private final StringProperty itemName = new SimpleStringProperty();
+        private final StringProperty category = new SimpleStringProperty();
+        private final DoubleProperty unitPrice = new SimpleDoubleProperty();
+
+        public MenuItem(String code, String name, String category, double price) {
+            this.itemCode.set(code);
+            this.itemName.set(name);
+            this.category.set(category);
+            this.unitPrice.set(price);
+        }
+
+        public String getItemCode() {
+            return itemCode.get();
+        }
+
+        public StringProperty itemCodeProperty() {
+            return itemCode;
+        }
+
+        public String getItemName() {
+            return itemName.get();
+        }
+
+        public StringProperty itemNameProperty() {
+            return itemName;
+        }
+
+        public String getCategory() {
+            return category.get();
+        }
+
+        public StringProperty categoryProperty() {
+            return category;
+        }
+
+        public double getUnitPrice() {
+            return unitPrice.get();
+        }
+
+        public DoubleProperty unitPriceProperty() {
+            return unitPrice;
+        }
+    }
+
+    public static class RestaurantOrder {
+        private final IntegerProperty id = new SimpleIntegerProperty();
+        private final StringProperty roomNumber = new SimpleStringProperty();
+        private final StringProperty guestName = new SimpleStringProperty();
+        private final StringProperty itemCode = new SimpleStringProperty();
+        private final StringProperty itemName = new SimpleStringProperty();
+        private final StringProperty category = new SimpleStringProperty();
+        private final DoubleProperty unitPrice = new SimpleDoubleProperty();
+        private final IntegerProperty quantity = new SimpleIntegerProperty();
+        private final DoubleProperty totalPrice = new SimpleDoubleProperty();
+        private final ObjectProperty<LocalDateTime> orderTime = new SimpleObjectProperty<>();
+        private final BooleanProperty settled = new SimpleBooleanProperty();
+
+        public RestaurantOrder(int id, String roomNo, String guest, String code, String name, String category,
+                double price, int qty, double total, LocalDateTime time, boolean settled) {
+            this.id.set(id);
+            this.roomNumber.set(roomNo);
             this.guestName.set(guest);
-            this.checkOut.set(out);
-            this.totalPaid.set(paid);
+            this.itemCode.set(code);
+            this.itemName.set(name);
+            this.category.set(category);
+            this.unitPrice.set(price);
+            this.quantity.set(qty);
+            this.totalPrice.set(total);
+            this.orderTime.set(time);
+            this.settled.set(settled);
+        }
+
+        public int getId() {
+            return id.get();
+        }
+
+        public IntegerProperty idProperty() {
+            return id;
         }
 
         public String getRoomNumber() {
@@ -207,41 +626,95 @@ public class HotelManagement extends Application {
             return guestName;
         }
 
-        public String getCheckOut() {
-            return checkOut.get();
+        public String getItemCode() {
+            return itemCode.get();
         }
 
-        public StringProperty checkOutProperty() {
-            return checkOut;
+        public StringProperty itemCodeProperty() {
+            return itemCode;
         }
 
-        public double getTotalPaid() {
-            return totalPaid.get();
+        public String getItemName() {
+            return itemName.get();
         }
 
-        public DoubleProperty totalPaidProperty() {
-            return totalPaid;
+        public StringProperty itemNameProperty() {
+            return itemName;
         }
 
-        public String toCSV() {
-            return String.join(",", getRoomNumber(), getGuestName(), getCheckOut(), String.valueOf(getTotalPaid()));
+        public String getCategory() {
+            return category.get();
+        }
+
+        public StringProperty categoryProperty() {
+            return category;
+        }
+
+        public double getUnitPrice() {
+            return unitPrice.get();
+        }
+
+        public DoubleProperty unitPriceProperty() {
+            return unitPrice;
+        }
+
+        public int getQuantity() {
+            return quantity.get();
+        }
+
+        public IntegerProperty quantityProperty() {
+            return quantity;
+        }
+
+        public double getTotalPrice() {
+            return totalPrice.get();
+        }
+
+        public DoubleProperty totalPriceProperty() {
+            return totalPrice;
+        }
+
+        public LocalDateTime getOrderTime() {
+            return orderTime.get();
+        }
+
+        public ObjectProperty<LocalDateTime> orderTimeProperty() {
+            return orderTime;
+        }
+
+        public boolean isSettled() {
+            return settled.get();
+        }
+
+        public BooleanProperty settledProperty() {
+            return settled;
         }
     }
 
     // --- State ---
     private final ObservableList<Room> roomList = FXCollections.observableArrayList();
     private final ObservableList<HistoryRecord> historyList = FXCollections.observableArrayList();
+    private final ObservableList<MenuItem> menuItemList = FXCollections.observableArrayList();
+    private final ObservableList<RestaurantOrder> restaurantOrderList = FXCollections.observableArrayList();
     private final StackPane contentArea = new StackPane();
+
+    // Aadhaar State
+    private byte[] selectedAadhaarBytes = null;
 
     // UI Metrics
     private final Label lblTotal = new Label("0"), lblAvail = new Label("0"), lblOcc = new Label("0"),
-            lblRevenue = new Label("₹0");
+            lblClean = new Label("0"), lblRevenue = new Label("₹0");
+    private VBox revenueCard;
 
     // Ledger summary label (needs class-level reference for dynamic updates)
     private Label ledgerSummaryLabel;
 
     // Dashboard activity center (needs class-level reference for dynamic updates)
     private FlowPane activityCenter;
+
+    // Fix 1 & 3: Class level variables
+    private javafx.collections.transformation.FilteredList<Room> occupiedRoomsForRestaurant;
+    private Runnable refreshHousekeepingPane;
 
     // Track active nav button
     private Button activeNavButton = null;
@@ -279,16 +752,25 @@ public class HotelManagement extends Application {
         separator.setStyle("-fx-background-color: " + GOLD_ACCENT + "; -fx-opacity: 0.4;");
         VBox.setMargin(separator, new Insets(15, 20, 15, 20));
 
-        // Nav buttons
-        Button btnDash = createNavButton("\u2302  Dashboard");
-        Button btnBook = createNavButton("\u270E  Bookings");
-        Button btnInv = createNavButton("\u2630  Inventory");
-        Button btnLedger = createNavButton("\u2261  Ledger");
-        Button btnSet = createNavButton("\u2699  Settings");
+        StackPane paneDash = createNavButton("\u2302  Dashboard");
+        StackPane paneBook = createNavButton("\u270E  Bookings");
+        StackPane paneInv = createNavButton("\u2630  Inventory");
+        StackPane paneRest = createNavButton("\ud83c\udf7d  Dining & POS");
+        StackPane paneHouse = createNavButton("\u2728  Housekeeping");
+        StackPane paneLedger = createNavButton("\u2261  Ledger");
+        StackPane paneSet = createNavButton("\u2699  Settings");
+
+        Button btnDash = (Button) paneDash.getUserData();
+        Button btnBook = (Button) paneBook.getUserData();
+        Button btnInv = (Button) paneInv.getUserData();
+        Button btnRest = (Button) paneRest.getUserData();
+        Button btnHouse = (Button) paneHouse.getUserData();
+        Button btnLedger = (Button) paneLedger.getUserData();
+        Button btnSet = (Button) paneSet.getUserData();
 
         VBox navItems = new VBox(4);
         navItems.setPadding(new Insets(0, 10, 20, 10));
-        navItems.getChildren().addAll(btnDash, btnBook, btnInv, btnLedger, btnSet);
+        navItems.getChildren().addAll(paneDash, paneBook, paneInv, paneRest, paneHouse, paneLedger, paneSet);
 
         // Spacer to push footer down
         Region spacer = new Region();
@@ -305,11 +787,13 @@ public class HotelManagement extends Application {
         Node viewDash = createDashboardView();
         Node viewBook = createBookingsView();
         Node viewInv = createInventoryView();
+        Node viewRest = createRestaurantView();
+        Node viewHouse = createHousekeepingView();
         Node viewLedger = createHistoryView();
         Node viewSet = createSettingsView();
 
         contentArea.setStyle("-fx-background-color: " + BG_WARM + ";");
-        contentArea.getChildren().addAll(viewDash, viewBook, viewInv, viewLedger, viewSet);
+        contentArea.getChildren().addAll(viewDash, viewBook, viewInv, viewRest, viewHouse, viewLedger, viewSet);
         switchView(viewDash);
         setActiveNav(btnDash);
 
@@ -327,6 +811,14 @@ public class HotelManagement extends Application {
             switchView(viewInv);
             setActiveNav(btnInv);
         });
+        btnRest.setOnAction(e -> {
+            switchView(viewRest);
+            setActiveNav(btnRest);
+        });
+        btnHouse.setOnAction(e -> {
+            switchView(viewHouse);
+            setActiveNav(btnHouse);
+        });
         btnLedger.setOnAction(e -> {
             switchView(viewLedger);
             setActiveNav(btnLedger);
@@ -341,28 +833,53 @@ public class HotelManagement extends Application {
         root.setCenter(contentArea);
 
         Scene scene = new Scene(root, 1250, 750);
-
-        // Global CSS for tables and controls
+        scene.getStylesheets().add(new File("styles.css").toURI().toString());
         scene.getRoot().setStyle("-fx-font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;");
 
         primaryStage.setTitle("MIT Grand Regency — Luxury Hospitality Management");
+
+        WritableImage icon = new WritableImage(64, 64);
+        PixelWriter pw = icon.getPixelWriter();
+        for (int x = 0; x < 64; x++) {
+            for (int y = 0; y < 64; y++) {
+                pw.setColor(x, y,
+                        (x > 20 && x < 44 && y > 20 && y < 44) ? Color.web(GOLD_ACCENT) : Color.web("#1a1a2e"));
+            }
+        }
+        primaryStage.getIcons().add(icon);
+        primaryStage.setMinWidth(1100);
+        primaryStage.setMinHeight(650);
+
         primaryStage.setScene(scene);
         primaryStage.setOnCloseRequest(event -> saveData());
+
+        primaryStage.setOpacity(0);
         primaryStage.show();
+        Timeline timeline = new Timeline(
+                new KeyFrame(Duration.millis(400), new KeyValue(primaryStage.opacityProperty(), 1.0)));
+        timeline.play();
 
         updateDashboardMetrics();
     }
 
     // --- Styled Navigation Button ---
-    private Button createNavButton(String text) {
+    private StackPane createNavButton(String text) {
         Button btn = new Button(text);
         btn.setMaxWidth(Double.MAX_VALUE);
         btn.setAlignment(Pos.CENTER_LEFT);
         btn.setPrefHeight(42);
         applyNavStyle(btn, false);
 
-        btn.setOnMouseEntered(e -> {
+        StackPane wrapper = new StackPane(btn);
+
+        TranslateTransition tt = new TranslateTransition(Duration.millis(150), btn);
+
+        wrapper.setOnMouseEntered(e -> {
             if (btn != activeNavButton) {
+                tt.stop();
+                tt.setFromX(btn.getTranslateX());
+                tt.setToX(6);
+                tt.play();
                 btn.setStyle(
                         "-fx-background-color: rgba(201,169,110,0.15);" +
                                 "-fx-text-fill: " + GOLD_ACCENT + ";" +
@@ -373,12 +890,18 @@ public class HotelManagement extends Application {
                                 "-fx-cursor: hand;");
             }
         });
-        btn.setOnMouseExited(e -> {
+        wrapper.setOnMouseExited(e -> {
             if (btn != activeNavButton) {
+                tt.stop();
+                tt.setFromX(btn.getTranslateX());
+                tt.setToX(0);
+                tt.play();
                 applyNavStyle(btn, false);
             }
         });
-        return btn;
+
+        wrapper.setUserData(btn);
+        return wrapper;
     }
 
     private void applyNavStyle(Button btn, boolean active) {
@@ -409,16 +932,46 @@ public class HotelManagement extends Application {
     private void setActiveNav(Button btn) {
         if (activeNavButton != null) {
             applyNavStyle(activeNavButton, false);
+            ScaleTransition st1 = new ScaleTransition(Duration.millis(100), (StackPane) activeNavButton.getParent());
+            st1.setToX(1.0);
+            st1.setToY(1.0);
+            st1.play();
         }
         activeNavButton = btn;
         applyNavStyle(btn, true);
+        ScaleTransition st2 = new ScaleTransition(Duration.millis(100), (StackPane) btn.getParent());
+        st2.setToX(1.02);
+        st2.setToY(1.02);
+        st2.play();
     }
 
     private void switchView(Node view) {
-        for (Node n : contentArea.getChildren()) {
-            n.setVisible(false);
+        Node outgoing = contentArea.getChildren().stream().filter(Node::isVisible).findFirst().orElse(null);
+        if (outgoing == view)
+            return;
+
+        if (outgoing != null) {
+            FadeTransition ftOut = new FadeTransition(Duration.millis(120), outgoing);
+            ftOut.setFromValue(1.0);
+            ftOut.setToValue(0.0);
+
+            FadeTransition ftIn = new FadeTransition(Duration.millis(200), view);
+            ftIn.setFromValue(0.0);
+            ftIn.setToValue(1.0);
+
+            SequentialTransition seq = new SequentialTransition(ftOut, ftIn);
+            ftOut.setOnFinished(e -> outgoing.setVisible(false));
+
+            view.setOpacity(0.0);
+            view.setVisible(true);
+            seq.play();
+        } else {
+            for (Node n : contentArea.getChildren()) {
+                n.setVisible(false);
+            }
+            view.setOpacity(1.0);
+            view.setVisible(true);
         }
-        view.setVisible(true);
     }
 
     // --- Section Header ---
@@ -516,6 +1069,19 @@ public class HotelManagement extends Application {
         topAccent.setStyle("-fx-background-color: " + GOLD_ACCENT + "; -fx-background-radius: 3 3 0 0;");
 
         VBox tile = new VBox(5, topAccent, roomNo, roomType, guestLabel, contactLabel, checkoutLabel, daysLabel);
+
+        if (room.getAadhaarImage() != null) {
+            ImageView aadhaarThumb = new ImageView(new Image(new ByteArrayInputStream(room.getAadhaarImage())));
+            aadhaarThumb.setFitWidth(60);
+            aadhaarThumb.setFitHeight(40);
+            aadhaarThumb.setPreserveRatio(true);
+            Label checkLabel = new Label("ID on file \u2713");
+            checkLabel.setStyle("-fx-text-fill: green; -fx-font-size: 10px;");
+            HBox thumbBox = new HBox(5, aadhaarThumb, checkLabel);
+            thumbBox.setAlignment(Pos.CENTER_LEFT);
+            tile.getChildren().add(thumbBox);
+        }
+
         tile.setPadding(new Insets(0, 14, 12, 14));
         tile.setPrefWidth(195);
         tile.setStyle(
@@ -537,9 +1103,24 @@ public class HotelManagement extends Application {
             empty.setStyle("-fx-font-size: 14px; -fx-text-fill: #aaa; -fx-padding: 30;");
             activityCenter.getChildren().add(empty);
         } else {
+            int i = 0;
             for (Room r : roomList) {
                 if (r.getStatus().equals("Occupied")) {
-                    activityCenter.getChildren().add(createOccupiedRoomTile(r));
+                    VBox tile = createOccupiedRoomTile(r);
+                    activityCenter.getChildren().add(tile);
+
+                    FadeTransition ft = new FadeTransition(Duration.millis(200), tile);
+                    ft.setFromValue(0);
+                    ft.setToValue(1);
+                    TranslateTransition tt = new TranslateTransition(Duration.millis(200), tile);
+                    tt.setFromY(15);
+                    tt.setToY(0);
+
+                    ParallelTransition pt = new ParallelTransition(ft, tt);
+                    PauseTransition pause = new PauseTransition(Duration.millis(80 * i));
+                    SequentialTransition st = new SequentialTransition(pause, pt);
+                    st.play();
+                    i++;
                 }
             }
         }
@@ -548,13 +1129,15 @@ public class HotelManagement extends Application {
     // --- View Generators ---
     private Node createDashboardView() {
         // Stats row — brand-consistent dark navy palette
+        revenueCard = createCard("Revenue", lblRevenue, "#2a1a3c", "#3d2452", "\u2605");
         HBox cards = new HBox(16);
         cards.setAlignment(Pos.CENTER_LEFT);
         cards.getChildren().addAll(
                 createCard("Total Rooms", lblTotal, "#1a1a2e", "#16213e", "\u2302"),
                 createCard("Available", lblAvail, "#1a3c34", "#1e5245", "\u2714"),
                 createCard("Occupied", lblOcc, "#3c1a1a", "#522020", "\u263A"),
-                createCard("Revenue", lblRevenue, "#2a1a3c", "#3d2452", "\u2605"));
+                createCard("Cleaning", lblClean, "#1a2a3c", "#1e3048", "\u2728"),
+                revenueCard);
 
         // Activity Center header
         Label actHeader = new Label("Activity Center — Live Occupancy");
@@ -598,6 +1181,26 @@ public class HotelManagement extends Application {
                 activityCard);
         root.setPadding(new Insets(30));
         VBox.setVgrow(activityCard, Priority.ALWAYS);
+
+        root.visibleProperty().addListener((obs, oldV, newV) -> {
+            if (newV) {
+                SequentialTransition st = new SequentialTransition();
+                for (Node c : cards.getChildren()) {
+                    c.setOpacity(0);
+                    TranslateTransition tt = new TranslateTransition(Duration.millis(300), c);
+                    tt.setFromY(30);
+                    tt.setToY(0);
+                    FadeTransition ft = new FadeTransition(Duration.millis(300), c);
+                    ft.setFromValue(0.0);
+                    ft.setToValue(1.0);
+                    ParallelTransition pt = new ParallelTransition(tt, ft);
+                    st.getChildren().add(pt);
+                    st.getChildren().add(new PauseTransition(Duration.millis(60)));
+                }
+                st.play();
+            }
+        });
+
         return root;
     }
 
@@ -605,6 +1208,7 @@ public class HotelManagement extends Application {
         lblTotal.setText(String.valueOf(roomList.size()));
         lblAvail.setText(String.valueOf(roomList.stream().filter(r -> r.getStatus().equals("Available")).count()));
         lblOcc.setText(String.valueOf(roomList.stream().filter(r -> r.getStatus().equals("Occupied")).count()));
+        lblClean.setText(String.valueOf(roomList.stream().filter(r -> r.getStatus().equals("Cleaning")).count()));
         double totalRevenue = historyList.stream().mapToDouble(HistoryRecord::getTotalPaid).sum();
         lblRevenue.setText(String.format("\u20B9%.0f", totalRevenue));
 
@@ -613,6 +1217,16 @@ public class HotelManagement extends Application {
 
         // Update ledger summary bar
         updateLedgerSummary();
+
+        // Ensure real-time RESTAURANT drop-down updates
+        if (occupiedRoomsForRestaurant != null) {
+            occupiedRoomsForRestaurant.setPredicate(null);
+            occupiedRoomsForRestaurant.setPredicate(r -> "Occupied".equals(r.getStatus()));
+        }
+
+        // Live Housekeeping resort updates
+        if (refreshHousekeepingPane != null)
+            refreshHousekeepingPane.run();
     }
 
     private void updateLedgerSummary() {
@@ -626,8 +1240,49 @@ public class HotelManagement extends Application {
     // --- Styled Table ---
     @SuppressWarnings("unchecked")
     private Node createBookingsView() {
+        java.util.Map<Room, Boolean> recentlyBooked = new java.util.HashMap<>();
+
         TableView<Room> table = new TableView<>();
-        styleTable(table);
+        table.setRowFactory(tv -> {
+            TableRow<Room> row = new TableRow<Room>() {
+                @Override
+                protected void updateItem(Room item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (item == null || empty) {
+                        getStyleClass().remove("row-success");
+                    } else if (recentlyBooked.getOrDefault(item, false)) {
+                        if (!getStyleClass().contains("row-success"))
+                            getStyleClass().add("row-success");
+                        PauseTransition pt = new PauseTransition(Duration.millis(1500));
+                        pt.setOnFinished(evt -> {
+                            getStyleClass().remove("row-success");
+                            recentlyBooked.put(item, false);
+                        });
+                        pt.play();
+                    }
+                }
+            };
+
+            ScaleTransition stHover = new ScaleTransition(Duration.millis(100), row);
+            stHover.setToX(1.005);
+            stHover.setToY(1.005);
+            ScaleTransition stExit = new ScaleTransition(Duration.millis(100), row);
+            stExit.setToX(1.0);
+            stExit.setToY(1.0);
+
+            row.setOnMouseEntered(e -> {
+                if (!row.isEmpty())
+                    stHover.playFromStart();
+            });
+            row.setOnMouseExited(e -> {
+                if (!row.isEmpty())
+                    stExit.playFromStart();
+            });
+            return row;
+        });
+        table.getStyleClass().add("table-view");
+        table.setFixedCellSize(40);
+
         FilteredList<Room> filteredData = new FilteredList<>(roomList, p -> true);
         table.setItems(filteredData);
 
@@ -655,6 +1310,11 @@ public class HotelManagement extends Application {
                                 "-fx-background-color: #e8f8f0; -fx-text-fill: #27ae60;" +
                                         "-fx-font-weight: bold; -fx-font-size: 11px;" +
                                         "-fx-background-radius: 12;");
+                    } else if (item.equals("Cleaning")) {
+                        badge.setStyle(
+                                "-fx-background-color: #fff3cd; -fx-text-fill: #856404;" +
+                                        "-fx-font-weight: bold; -fx-font-size: 11px;" +
+                                        "-fx-background-radius: 12;");
                     } else {
                         badge.setStyle(
                                 "-fx-background-color: #fdecea; -fx-text-fill: #c0392b;" +
@@ -679,7 +1339,28 @@ public class HotelManagement extends Application {
         TableColumn<Room, LocalDate> colOut = new TableColumn<>("Check-Out");
         colOut.setCellValueFactory(new PropertyValueFactory<>("expectedCheckOutDate"));
 
-        table.getColumns().addAll(colRoom, colType, colStat, colGuest, colContact, colIn, colOut);
+        TableColumn<Room, Boolean> colPriority = new TableColumn<>("\u2691");
+        colPriority.setCellValueFactory(new PropertyValueFactory<>("priority"));
+        colPriority.setCellFactory(c -> new TableCell<Room, Boolean>() {
+            @Override
+            protected void updateItem(Boolean val, boolean empty) {
+                super.updateItem(val, empty);
+                if (empty || val == null || !val) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    Label badge = new Label("URGENT");
+                    badge.setStyle(
+                            "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 6; -fx-background-radius: 8;");
+                    setGraphic(badge);
+                    setText(null);
+                }
+            }
+        });
+        colPriority.setPrefWidth(70);
+        colPriority.setMaxWidth(70);
+
+        table.getColumns().addAll(colRoom, colType, colStat, colGuest, colContact, colIn, colOut, colPriority);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
 
         // Filter bar
@@ -708,9 +1389,17 @@ public class HotelManagement extends Application {
         spinDays.setPrefWidth(100);
         spinDays.setStyle("-fx-font-size: 13px;");
 
-        Button btnBook = createStyledButton("Book", "#1a5e3a");
-        Button btnExt = createStyledButton("Extend", "#7a5c1e");
-        Button btnOut = createStyledButton("Checkout", "#7a1e1e");
+        Button btnBook = new Button("\ud83d\udccc Book Room");
+        btnBook.setStyle(
+                "-fx-background-color: #c9a96e; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
+
+        Button btnOut = new Button("\ud83d\uded2 Checkout");
+        btnOut.setStyle(
+                "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
+
+        Button btnExt = new Button("\u23f1 Extend");
+        btnExt.setStyle(
+                "-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
         btnExt.setDisable(true);
         btnOut.setDisable(true);
 
@@ -723,19 +1412,76 @@ public class HotelManagement extends Application {
         lName.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: " + DARK_TEXT + ";");
         Label lPhone = new Label("Phone");
         lPhone.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: " + DARK_TEXT + ";");
+        Label lEmail = new Label("Email Address");
+        lEmail.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: " + DARK_TEXT + ";");
+        Label lAddress = new Label("Home Address");
+        lAddress.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: " + DARK_TEXT + ";");
         Label lDays = new Label("Duration (Days)");
         lDays.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: " + DARK_TEXT + ";");
+        Label lAadhaar = new Label("Aadhaar Card Image:");
+        lAadhaar.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: " + DARK_TEXT + ";");
+
+        ImageView aadhaarPreview = new ImageView();
+        aadhaarPreview.setFitWidth(150);
+        aadhaarPreview.setFitHeight(100);
+        aadhaarPreview.setPreserveRatio(true);
+        VBox previewBox = new VBox(aadhaarPreview);
+        previewBox.setAlignment(Pos.CENTER);
+        previewBox.setPrefSize(150, 100);
+        previewBox.setStyle("-fx-border-color: #aaa; -fx-border-style: dashed; -fx-background-color: #f9f9f9;");
+
+        Button btnUpload = new Button("\ud83d\udcc1 Upload Image");
+        btnUpload.setStyle("-fx-font-size: 10px;");
+        Button btnWebcam = new Button("\ud83d\udcf7 Capture");
+        btnWebcam.setStyle("-fx-font-size: 10px;");
+        btnWebcam.setDisable(true);
+        btnWebcam.setTooltip(new Tooltip("Webcam capture requires external hardware"));
+
+        btnUpload.setOnAction(evt -> {
+            FileChooser fc = new FileChooser();
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg"));
+            File file = fc.showOpenDialog(btnUpload.getScene().getWindow());
+            if (file != null) {
+                if (file.length() > 5 * 1024 * 1024) {
+                    showAlert(Alert.AlertType.WARNING, "File Too Large", "Aadhaar image must be under 5MB.");
+                    return;
+                }
+                try {
+                    selectedAadhaarBytes = Files.readAllBytes(file.toPath());
+                    aadhaarPreview.setImage(new Image(new ByteArrayInputStream(selectedAadhaarBytes)));
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+
+        HBox uploadRow = new HBox(5, btnUpload, btnWebcam);
+
+        TextField txtEmail = new TextField();
+        txtEmail.setPromptText("Email Address");
+        styleTextField(txtEmail);
+
+        TextField txtAddress = new TextField();
+        txtAddress.setPromptText("Home Address");
+        styleTextField(txtAddress);
 
         grid.add(lName, 0, 0);
         grid.add(txtCust, 0, 1);
         grid.add(lPhone, 0, 2);
         grid.add(txtCont, 0, 3);
-        grid.add(lDays, 0, 4);
-        grid.add(spinDays, 0, 5);
+        grid.add(lEmail, 0, 4);
+        grid.add(txtEmail, 0, 5);
+        grid.add(lAddress, 0, 6);
+        grid.add(txtAddress, 0, 7);
+        grid.add(lAadhaar, 0, 8);
+        grid.add(previewBox, 0, 9);
+        grid.add(uploadRow, 0, 10);
+        grid.add(lDays, 0, 11);
+        grid.add(spinDays, 0, 12);
 
         HBox btnRow = new HBox(10, btnBook, btnExt, btnOut);
         btnRow.setPadding(new Insets(8, 0, 0, 0));
-        grid.add(btnRow, 0, 6);
+        grid.add(btnRow, 0, 13);
 
         // Wrap action panel in styled card
         Label actionTitle = new Label("Action Desk");
@@ -747,46 +1493,130 @@ public class HotelManagement extends Application {
         actionSep.setMaxWidth(Double.MAX_VALUE);
         actionSep.setStyle("-fx-background-color: " + GOLD_ACCENT + "; -fx-opacity: 0.5;");
 
-        VBox actionCard = new VBox(10, actionTitle, actionSep, grid);
+        ScrollPane actionScroll = new ScrollPane(grid);
+        actionScroll.setFitToWidth(true);
+        actionScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        actionScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        actionScroll.setStyle(
+                "-fx-background: transparent; -fx-background-color: transparent; -fx-border-color: transparent;");
+        actionScroll.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(actionScroll, Priority.ALWAYS);
+
+        VBox actionCard = new VBox(10, actionTitle, actionSep, actionScroll);
         actionCard.setPadding(new Insets(20));
         actionCard.setStyle(
                 "-fx-background-color: white;" +
                         "-fx-background-radius: 12;" +
                         "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 12, 0.0, 0, 3);");
         actionCard.setPrefWidth(320);
+        actionCard.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(actionCard, Priority.ALWAYS);
+
+        Consumer<Room> updateActionForm = sel -> {
+            if (sel == null) {
+                btnBook.setDisable(true);
+                btnExt.setDisable(true);
+                btnOut.setDisable(true);
+                txtCust.clear();
+                txtCont.clear();
+                txtEmail.clear();
+                txtAddress.clear();
+                aadhaarPreview.setImage(null);
+                selectedAadhaarBytes = null;
+                return;
+            }
+
+            if ("Available".equals(sel.getStatus())) {
+                btnBook.setDisable(false);
+                btnExt.setDisable(true);
+                btnOut.setDisable(true);
+                txtCust.clear();
+                txtCont.clear();
+                txtEmail.clear();
+                txtAddress.clear();
+                aadhaarPreview.setImage(null);
+                selectedAadhaarBytes = null;
+                txtCust.setEditable(true);
+                txtCont.setEditable(true);
+                txtEmail.setEditable(true);
+                txtAddress.setEditable(true);
+                spinDays.setDisable(false);
+                btnUpload.setDisable(false);
+
+            } else if ("Occupied".equals(sel.getStatus())) {
+                btnBook.setDisable(true);
+                btnExt.setDisable(false);
+                btnOut.setDisable(false);
+                txtCust.setText(sel.getCustomerName() != null ? sel.getCustomerName() : "");
+                txtCont.setText(sel.getContactNumber() != null ? sel.getContactNumber() : "");
+                txtEmail.setText(sel.getGuestEmail() != null ? sel.getGuestEmail() : "");
+                txtAddress.setText(sel.getGuestAddress() != null ? sel.getGuestAddress() : "");
+                if (sel.getAadhaarImage() != null) {
+                    aadhaarPreview.setImage(new Image(new ByteArrayInputStream(sel.getAadhaarImage())));
+                    selectedAadhaarBytes = sel.getAadhaarImage();
+                } else {
+                    aadhaarPreview.setImage(null);
+                    selectedAadhaarBytes = null;
+                }
+                txtCust.setEditable(false);
+                txtCont.setEditable(false);
+                txtEmail.setEditable(false);
+                txtAddress.setEditable(false);
+                spinDays.setDisable(true);
+                btnUpload.setDisable(true);
+
+            } else {
+                // Cleaning or other states — nothing actionable
+                btnBook.setDisable(true);
+                btnExt.setDisable(true);
+                btnOut.setDisable(true);
+                txtCust.clear();
+                txtCont.clear();
+                txtEmail.clear();
+                txtAddress.clear();
+                aadhaarPreview.setImage(null);
+                selectedAadhaarBytes = null;
+            }
+        };
+
+        // Set initial state — all disabled until a room is selected
+        btnBook.setDisable(true);
+        btnExt.setDisable(true);
+        btnOut.setDisable(true);
 
         table.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
-            if (sel != null) {
-                if (sel.getStatus().equals("Occupied")) {
-                    txtCust.setText(sel.getCustomerName());
-                    txtCont.setText(sel.getContactNumber());
-                    txtCust.setEditable(false);
-                    txtCont.setEditable(false);
-                    spinDays.setDisable(true);
-                    btnBook.setDisable(true);
-                    btnExt.setDisable(false);
-                    btnOut.setDisable(false);
-                } else {
-                    txtCust.clear();
-                    txtCont.clear();
-                    txtCust.setEditable(true);
-                    txtCont.setEditable(true);
-                    spinDays.setDisable(false);
-                    btnBook.setDisable(false);
-                    btnExt.setDisable(true);
-                    btnOut.setDisable(true);
-                }
-            }
+            updateActionForm.accept(sel);
         });
 
         btnBook.setOnAction(e -> {
             Room r = table.getSelectionModel().getSelectedItem();
             if (r != null && !txtCust.getText().isEmpty()) {
+                if (selectedAadhaarBytes == null) {
+                    showAlert(Alert.AlertType.WARNING, "Missing Image", "Aadhaar card image is required for check-in.");
+                    return;
+                }
                 r.setStatus("Occupied");
-                r.setOccupancy(txtCust.getText(), txtCont.getText(), LocalDate.now(),
-                        LocalDate.now().plusDays(spinDays.getValue()));
+                r.setOccupancy(txtCust.getText(), txtCont.getText(), txtEmail.getText(), txtAddress.getText(),
+                        LocalDate.now(),
+                        LocalDate.now().plusDays(spinDays.getValue()), selectedAadhaarBytes);
+
+                selectedAadhaarBytes = null;
+                aadhaarPreview.setImage(null);
+
+                recentlyBooked.put(r, true);
                 table.refresh();
                 updateDashboardMetrics();
+
+                if (revenueCard != null) {
+                    ScaleTransition st1 = new ScaleTransition(Duration.millis(150), revenueCard);
+                    st1.setToX(1.04);
+                    st1.setToY(1.04);
+                    ScaleTransition st2 = new ScaleTransition(Duration.millis(150), revenueCard);
+                    st2.setToX(1.0);
+                    st2.setToY(1.0);
+                    new SequentialTransition(st1, st2).play();
+                }
+
                 saveData(); // Save to MySQL
             }
         });
@@ -815,39 +1645,116 @@ public class HotelManagement extends Application {
                 }
                 double subtotal = days * r.getPrice();
                 double tax = subtotal * (gstRate / 100.0);
-                double grandTotal = subtotal + tax;
+                double resTotal = 0.0;
+                List<RestaurantOrder> settledNow = new ArrayList<>();
+                for (RestaurantOrder o : restaurantOrderList) {
+                    if (o.getRoomNumber().equals(r.getRoomNumber()) && !o.isSettled()) {
+                        resTotal += o.getTotalPrice();
+                        settledNow.add(o);
+                    }
+                }
 
-                historyList.add(new HistoryRecord(r.getRoomNumber(), r.getCustomerName(), LocalDate.now().toString(),
-                        grandTotal));
+                double grandTotal = subtotal + tax + resTotal;
 
-                String invoice = String.format(
-                        "╔══════════════════════════════════╗\n" +
-                                "║     MIT GRAND REGENCY            ║\n" +
-                                "║        FINAL INVOICE             ║\n" +
-                                "╠══════════════════════════════════╣\n" +
-                                "║ Guest: %-25s ║\n" +
-                                "║ Room:  %-25s ║\n" +
-                                "║ Days:  %-25d ║\n" +
-                                "║ Rate:  ₹%-24.2f ║\n" +
-                                "╠══════════════════════════════════╣\n" +
-                                "║ Subtotal:  ₹%-20.2f ║\n" +
-                                "║ GST %.1f%%:  ₹%-20.2f ║\n" +
-                                "╠══════════════════════════════════╣\n" +
-                                "║ GRAND TOTAL: ₹%-18.2f ║\n" +
-                                "╚══════════════════════════════════╝",
-                        r.getCustomerName(), r.getRoomNumber(), days, r.getPrice(),
-                        subtotal, gstRate, tax, grandTotal);
+                HistoryRecord record = new HistoryRecord(
+                        r.getRoomNumber(), r.getRoomType(), r.getCustomerName(), r.getContactNumber(),
+                        r.getGuestEmail(), r.getGuestAddress(),
+                        r.getCheckInDate().toString(), LocalDate.now().toString(),
+                        r.getPrice(), days, subtotal, tax, gstRate, grandTotal, LocalDateTime.now(),
+                        r.getAadhaarImage());
 
-                r.clearOccupancy();
-                table.refresh();
-                updateDashboardMetrics();
-                saveData(); // Save to MySQL
-                showAlert(Alert.AlertType.INFORMATION, "Checkout Complete", invoice);
+                Dialog<ButtonType> dialog = new Dialog<>();
+                dialog.setTitle("Checkout Confirmation");
+                dialog.setHeaderText("Checkout preview for Room " + r.getRoomNumber());
+
+                GridPane previewGrid = new GridPane();
+                previewGrid.setHgap(10);
+                previewGrid.setVgap(10);
+                previewGrid.setPadding(new Insets(20, 150, 10, 10));
+
+                previewGrid.add(new Label("Guest:"), 0, 0);
+                previewGrid.add(new Label(record.getGuestName()), 1, 0);
+                previewGrid.add(new Label("Check-In:"), 0, 1);
+                previewGrid.add(new Label(record.getCheckInDate()), 1, 1);
+                previewGrid.add(new Label("Nights:"), 0, 2);
+                previewGrid.add(new Label(String.valueOf(record.getNights())), 1, 2);
+                previewGrid.add(new Label("Room Subtotal:"), 0, 3);
+                previewGrid.add(new Label(String.format("Rs. %.2f", record.getSubtotal())), 1, 3);
+                previewGrid.add(new Label("Room Tax:"), 0, 4);
+                previewGrid.add(new Label(String.format("Rs. %.2f", record.getTaxAmount())), 1, 4);
+                previewGrid.add(new Label("Dining/POS:"), 0, 5);
+                previewGrid.add(new Label(String.format("Rs. %.2f", resTotal)), 1, 5);
+                previewGrid.add(new Label("Total Paid:"), 0, 6);
+                previewGrid.add(new Label(String.format("Rs. %.2f", record.getTotalPaid())), 1, 6);
+
+                dialog.getDialogPane().setContent(previewGrid);
+                ButtonType btnConfirmPdf = new ButtonType("Confirm & Save PDF", ButtonBar.ButtonData.OK_DONE);
+                dialog.getDialogPane().getButtonTypes().addAll(btnConfirmPdf, ButtonType.CANCEL);
+
+                Optional<ButtonType> result = dialog.showAndWait();
+                if (result.isPresent() && result.get() == btnConfirmPdf) {
+                    FileChooser fileChooser = new FileChooser();
+                    fileChooser.setTitle("Save Invoice PDF");
+                    fileChooser.setInitialFileName(String.format("Invoice_Room%s_%s.pdf", r.getRoomNumber(),
+                            r.getCustomerName().replaceAll(" ", "")));
+                    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
+                    File file = fileChooser.showSaveDialog(btnOut.getScene().getWindow());
+
+                    if (file != null) {
+                        try {
+                            for (RestaurantOrder o : settledNow) {
+                                o.settledProperty().set(true);
+                            }
+
+                            generateInvoicePDF(file, record, settledNow, resTotal);
+                            historyList.add(record);
+                            r.setCheckingOut();
+                            table.refresh();
+                            updateDashboardMetrics();
+                            saveData(); // Save to MySQL
+                            saveRestaurantOrders(); // Persist settled orders
+                            showAlert(Alert.AlertType.INFORMATION, "Checkout Complete",
+                                    "Invoice successfully saved to:\n" + file.getAbsolutePath());
+
+                            // Send Invoice async
+                            if (record.getGuestEmail() != null && !record.getGuestEmail().isEmpty()) {
+                                String email = record.getGuestEmail();
+                                new Thread(() -> {
+                                    try {
+                                        EmailSender.sendInvoice(email, record.getGuestName(), record.getRoomNumber(),
+                                                file);
+                                        javafx.application.Platform
+                                                .runLater(() -> showAlert(Alert.AlertType.INFORMATION, "Email Sent",
+                                                        "Invoice emailed to: " + email));
+                                    } catch (Exception ex) {
+                                        javafx.application.Platform.runLater(() -> showAlert(Alert.AlertType.WARNING,
+                                                "Email Failed",
+                                                "Invoice saved but email could not be sent: " + ex.getMessage()));
+                                    }
+                                }).start();
+                            }
+                        } catch (Throwable ex) {
+                            for (RestaurantOrder o : settledNow) {
+                                o.settledProperty().set(false);
+                            } // Rollback
+                            showAlert(Alert.AlertType.ERROR, "Checkout/PDF Generation Failed",
+                                    "Failed to complete checkout or construct the PDF:\n" + ex.getMessage() + "\n"
+                                            + ex.toString());
+                            ex.printStackTrace();
+                        }
+                    } else {
+                        showAlert(Alert.AlertType.INFORMATION, "Checkout Cancelled",
+                                "Checkout was cancelled because no PDF file was selected.");
+                    }
+                }
             }
         });
 
         VBox right = new VBox(20, actionCard);
         right.setPadding(new Insets(0, 10, 10, 10));
+        VBox.setVgrow(right, Priority.ALWAYS);
+        HBox.setHgrow(right, Priority.NEVER);
+        right.setPrefWidth(340);
 
         VBox left = new VBox(12, filterBar, table);
         left.setPadding(new Insets(0, 10, 10, 0));
@@ -856,6 +1763,7 @@ public class HotelManagement extends Application {
 
         HBox mainContent = new HBox(15, left, right);
         HBox.setHgrow(left, Priority.ALWAYS);
+        HBox.setHgrow(right, Priority.NEVER);
 
         VBox root = new VBox(20,
                 createSectionHeader("Room Bookings", "Manage guest check-in, check-out, and stay extensions"),
@@ -897,7 +1805,9 @@ public class HotelManagement extends Application {
         comboType.setStyle("-fx-font-size: 13px;");
 
         Button btnAdd = createStyledButton("+ Add Room", ROYAL_BLUE);
+        btnAdd.setTooltip(new Tooltip("Add a new room to inventory"));
         Button btnRemove = createStyledButton("- Remove", DANGER_RED);
+        btnRemove.setTooltip(new Tooltip("Remove the selected available room"));
 
         btnRemove.setOnAction(e -> {
             Room selected = table.getSelectionModel().getSelectedItem();
@@ -920,7 +1830,7 @@ public class HotelManagement extends Application {
                 }
                 double p = comboType.getValue().equals("Single") ? priceSingle
                         : (comboType.getValue().equals("Double") ? priceDouble : priceDeluxe);
-                roomList.add(new Room(newNo, comboType.getValue(), p, "Available", "", "", null, null));
+                roomList.add(new Room(newNo, comboType.getValue(), p));
                 txtNo.clear();
                 updateDashboardMetrics();
                 saveData(); // Save to MySQL
@@ -949,6 +1859,217 @@ public class HotelManagement extends Application {
     }
 
     @SuppressWarnings("unchecked")
+    private Node createRestaurantView() {
+        TableView<MenuItem> menuTable = new TableView<>();
+        styleTable(menuTable);
+        menuTable.setItems(menuItemList);
+
+        TableColumn<MenuItem, String> cName = new TableColumn<>("Item");
+        cName.setCellValueFactory(new PropertyValueFactory<>("itemName"));
+        TableColumn<MenuItem, Double> cPrice = new TableColumn<>("Price (₹)");
+        cPrice.setCellValueFactory(new PropertyValueFactory<>("unitPrice"));
+        menuTable.getColumns().addAll(cName, cPrice);
+        menuTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+
+        TableView<RestaurantOrder> orderTable = new TableView<>();
+        styleTable(orderTable);
+
+        orderTable.setItems(restaurantOrderList.filtered(o -> !o.isSettled()));
+        restaurantOrderList
+                .addListener((javafx.collections.ListChangeListener<RestaurantOrder>) c -> orderTable.refresh());
+
+        TableColumn<RestaurantOrder, String> oRoom = new TableColumn<>("Room");
+        oRoom.setCellValueFactory(new PropertyValueFactory<>("roomNumber"));
+
+        TableColumn<RestaurantOrder, String> oItem = new TableColumn<>("Item");
+        oItem.setCellValueFactory(new PropertyValueFactory<>("itemName"));
+
+        TableColumn<RestaurantOrder, String> oCat = new TableColumn<>("Category");
+        oCat.setCellValueFactory(new PropertyValueFactory<>("category"));
+
+        TableColumn<RestaurantOrder, Integer> oQty = new TableColumn<>("Qty");
+        oQty.setCellValueFactory(new PropertyValueFactory<>("quantity"));
+
+        TableColumn<RestaurantOrder, Double> oTotal = new TableColumn<>("Total (₹)");
+        oTotal.setCellValueFactory(new PropertyValueFactory<>("totalPrice"));
+
+        TableColumn<RestaurantOrder, LocalDateTime> oTime = new TableColumn<>("Time");
+        oTime.setCellValueFactory(new PropertyValueFactory<>("orderTime"));
+        oTime.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(LocalDateTime v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? null : v.format(DateTimeFormatter.ofPattern("HH:mm, dd MMM")));
+            }
+        });
+
+        orderTable.getColumns().addAll(oRoom, oItem, oCat, oQty, oTotal, oTime);
+        orderTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+
+        ComboBox<Room> roomCombo = new ComboBox<>();
+        roomCombo.setPromptText("Select Room");
+
+        occupiedRoomsForRestaurant = new javafx.collections.transformation.FilteredList<>(roomList,
+                r -> "Occupied".equals(r.getStatus()));
+        roomCombo.setItems(occupiedRoomsForRestaurant);
+
+        roomCombo.setConverter(new javafx.util.StringConverter<Room>() {
+            @Override
+            public String toString(Room r) {
+                return r == null ? "" : "Room " + r.getRoomNumber() + " \u2014 " + r.getCustomerName();
+            }
+
+            @Override
+            public Room fromString(String s) {
+                return null;
+            }
+        });
+
+        roomList.addListener((javafx.collections.ListChangeListener<Room>) change -> {
+            occupiedRoomsForRestaurant.setPredicate(r -> "Occupied".equals(r.getStatus()));
+            roomCombo.setItems(null);
+            roomCombo.setItems(occupiedRoomsForRestaurant);
+        });
+
+        Spinner<Integer> qtySpinner = new Spinner<>(1, 20, 1);
+        qtySpinner.setPrefWidth(80);
+
+        Button btnOrder = createStyledButton("Place Order", "#2980b9");
+        btnOrder.setOnAction(e -> {
+            MenuItem selectedItem = menuTable.getSelectionModel().getSelectedItem();
+            Room selectedRoom = roomCombo.getValue();
+
+            if (selectedItem != null && selectedRoom != null) {
+                String roomNo = selectedRoom.getRoomNumber();
+                String guestName = selectedRoom.getCustomerName();
+                int qty = qtySpinner.getValue();
+                double total = qty * selectedItem.getUnitPrice();
+
+                RestaurantOrder order = new RestaurantOrder(0, roomNo, guestName, selectedItem.getItemCode(),
+                        selectedItem.getItemName(), selectedItem.getCategory(), selectedItem.getUnitPrice(),
+                        qty, total, LocalDateTime.now(), false);
+
+                restaurantOrderList.add(order);
+                saveRestaurantOrders();
+                orderTable.refresh();
+            } else {
+                showAlert(Alert.AlertType.WARNING, "Selection Missing",
+                        "Please select an occupied room and a menu item.");
+            }
+        });
+
+        HBox actionBox = new HBox(15, new Label("Room:"), roomCombo, new Label("Qty:"), qtySpinner, btnOrder);
+        actionBox.setAlignment(Pos.CENTER_LEFT);
+        actionBox.setPadding(new Insets(15));
+        actionBox.setStyle("-fx-background-color: white; -fx-background-radius: 12;");
+
+        VBox left = new VBox(15, new Label("Menu"), menuTable, actionBox);
+        HBox.setHgrow(left, Priority.ALWAYS);
+        VBox right = new VBox(15, new Label("Pending Room Orders"), orderTable);
+        HBox.setHgrow(right, Priority.ALWAYS);
+
+        HBox split = new HBox(20, left, right);
+        VBox root = new VBox(20, createSectionHeader("Dining & POS", "Manage restaurant orders for checked-in guests"),
+                split);
+        root.setPadding(new Insets(30));
+        return root;
+    }
+
+    // --- Housekeeping View ---
+    private Node createHousekeepingView() {
+        FlowPane cleaningGrid = new FlowPane();
+        cleaningGrid.setHgap(15);
+        cleaningGrid.setVgap(15);
+        cleaningGrid.setPadding(new Insets(10));
+
+        refreshHousekeepingPane = () -> {
+            cleaningGrid.getChildren().clear();
+            List<Room> cleaningRooms = roomList.stream()
+                    .filter(r -> "Cleaning".equals(r.getStatus()))
+                    .sorted((a, b) -> Boolean.compare(b.isPriority(), a.isPriority()))
+                    .collect(java.util.stream.Collectors.toList());
+
+            if (cleaningRooms.isEmpty()) {
+                Label empty = new Label("All rooms are clean and available.");
+                empty.setStyle("-fx-font-size: 14px; -fx-text-fill: #aaa; -fx-padding: 30;");
+                cleaningGrid.getChildren().add(empty);
+            } else {
+                for (Room r : cleaningRooms) {
+                    VBox card = new VBox(10);
+                    card.setPadding(new Insets(15));
+                    card.setPrefWidth(200);
+
+                    if (r.isPriority()) {
+                        card.setStyle(
+                                "-fx-background-color: white;" +
+                                        "-fx-background-radius: 10;" +
+                                        "-fx-border-color: #e74c3c;" +
+                                        "-fx-border-width: 0 0 0 4;" +
+                                        "-fx-border-radius: 10;" +
+                                        "-fx-effect: dropshadow(gaussian, rgba(231,76,60,0.2), 12, 0, 0, 3);");
+                    } else {
+                        card.setStyle(
+                                "-fx-background-color: white;" +
+                                        "-fx-background-radius: 10;" +
+                                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);");
+                    }
+
+                    Label lblRoom = new Label("Room " + r.getRoomNumber());
+                    lblRoom.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #2c2c2c;");
+                    Label lblType = new Label(r.getRoomType());
+                    lblType.setStyle("-fx-text-fill: #c9a96e; -fx-font-weight: bold;");
+
+                    Label priorityBadge = new Label(r.isPriority() ? "🔴 URGENT" : "");
+                    priorityBadge.setStyle("-fx-text-fill: #e74c3c; -fx-font-weight: bold; -fx-font-size: 11px;");
+
+                    Button btnPriority = new Button(r.isPriority() ? "✓ Marked Urgent" : "🔴 Mark as Priority");
+                    btnPriority.setMaxWidth(Double.MAX_VALUE);
+                    btnPriority.setStyle(r.isPriority()
+                            ? "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold;"
+                            : "-fx-background-color: #f39c12; -fx-text-fill: white; -fx-font-weight: bold;");
+
+                    btnPriority.setOnAction(ev -> {
+                        r.setPriority(!r.isPriority());
+                        saveData();
+                        refreshHousekeepingPane.run();
+                    });
+
+                    Button btnCleaned = new Button("Mark as Available");
+                    btnCleaned.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold;");
+                    btnCleaned.setMaxWidth(Double.MAX_VALUE);
+                    btnCleaned.setOnAction(e -> {
+                        r.setStatus("Available");
+                        r.setPriority(false);
+                        updateDashboardMetrics();
+                        saveData();
+                        refreshHousekeepingPane.run();
+                    });
+
+                    card.getChildren().addAll(lblRoom, lblType, priorityBadge, btnPriority, btnCleaned);
+                    cleaningGrid.getChildren().add(card);
+                }
+            }
+        };
+
+        refreshHousekeepingPane.run();
+
+        ScrollPane sp = new ScrollPane(cleaningGrid);
+        sp.setFitToWidth(true);
+        sp.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+
+        VBox root = new VBox(20, createSectionHeader("Housekeeping", "Manage room cleaning states post-checkout"), sp);
+        root.setPadding(new Insets(30));
+
+        root.visibleProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal)
+                refreshHousekeepingPane.run();
+        });
+
+        refreshHousekeepingPane.run();
+        return root;
+    }
+
+    @SuppressWarnings("unchecked")
     private Node createHistoryView() {
         TableView<HistoryRecord> table = new TableView<>();
         styleTable(table);
@@ -958,41 +2079,174 @@ public class HotelManagement extends Application {
         c1.setCellValueFactory(new PropertyValueFactory<>("roomNumber"));
         c1.setStyle("-fx-font-weight: bold;");
 
-        TableColumn<HistoryRecord, String> c2 = new TableColumn<>("Guest Name");
-        c2.setCellValueFactory(new PropertyValueFactory<>("guestName"));
+        TableColumn<HistoryRecord, String> c2 = new TableColumn<>("Type");
+        c2.setCellValueFactory(new PropertyValueFactory<>("roomType"));
 
-        TableColumn<HistoryRecord, String> c3 = new TableColumn<>("Checkout Date");
-        c3.setCellValueFactory(new PropertyValueFactory<>("checkOut"));
+        TableColumn<HistoryRecord, String> c3 = new TableColumn<>("Guest Name");
+        c3.setCellValueFactory(new PropertyValueFactory<>("guestName"));
 
-        TableColumn<HistoryRecord, Double> c4 = new TableColumn<>("Amount Paid (₹)");
-        c4.setCellValueFactory(new PropertyValueFactory<>("totalPaid"));
+        TableColumn<HistoryRecord, String> c_contact = new TableColumn<>("Contact");
+        c_contact.setCellValueFactory(new PropertyValueFactory<>("contactNumber"));
 
-        table.getColumns().addAll(c1, c2, c3, c4);
+        TableColumn<HistoryRecord, String> c4 = new TableColumn<>("Check-In");
+        c4.setCellValueFactory(new PropertyValueFactory<>("checkInDate"));
+
+        TableColumn<HistoryRecord, String> c5 = new TableColumn<>("Check-Out");
+        c5.setCellValueFactory(new PropertyValueFactory<>("checkOutDate"));
+
+        TableColumn<HistoryRecord, Long> c6 = new TableColumn<>("Nights");
+        c6.setCellValueFactory(new PropertyValueFactory<>("nights"));
+
+        TableColumn<HistoryRecord, Double> c7 = new TableColumn<>("Amount Paid (Rs)");
+        c7.setCellValueFactory(new PropertyValueFactory<>("totalPaid"));
+        c7.setCellFactory(tc -> new TableCell<HistoryRecord, Double>() {
+            @Override
+            protected void updateItem(Double value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty || value == null)
+                    setText(null);
+                else
+                    setText(String.format("Rs. %.2f", value));
+            }
+        });
+
+        TableColumn<HistoryRecord, LocalDateTime> c8 = new TableColumn<>("Booked At");
+        c8.setCellValueFactory(new PropertyValueFactory<>("bookedAt"));
+        c8.setCellFactory(tc -> new TableCell<HistoryRecord, LocalDateTime>() {
+            @Override
+            protected void updateItem(LocalDateTime value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty || value == null)
+                    setText(null);
+                else
+                    setText(value.format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm")));
+            }
+        });
+
+        TableColumn<HistoryRecord, byte[]> c9 = new TableColumn<>("ID");
+        c9.setCellValueFactory(new PropertyValueFactory<>("aadhaarImage"));
+        c9.setCellFactory(tc -> new TableCell<HistoryRecord, byte[]>() {
+            @Override
+            protected void updateItem(byte[] fileBytes, boolean empty) {
+                super.updateItem(fileBytes, empty);
+                if (empty)
+                    setGraphic(null);
+                else if (fileBytes == null)
+                    setGraphic(new Label("—"));
+                else {
+                    ImageView iv = new ImageView(new Image(new ByteArrayInputStream(fileBytes)));
+                    iv.setFitWidth(50);
+                    iv.setFitHeight(35);
+                    iv.setPreserveRatio(true);
+                    setGraphic(iv);
+                }
+            }
+        });
+
+        TableColumn<HistoryRecord, Void> c10 = new TableColumn<>("Invoice");
+        c10.setCellFactory(tc -> new TableCell<HistoryRecord, Void>() {
+            private final Button btn = new Button("⬇ PDF");
+            {
+                btn.setStyle(
+                        "-fx-background-color: #2a1a3c; -fx-text-fill: white; -fx-font-size: 11px; -fx-cursor: hand;");
+                btn.setOnAction(e -> {
+                    HistoryRecord data = getTableView().getItems().get(getIndex());
+                    FileChooser fc = new FileChooser();
+                    fc.setInitialFileName("Reinvoice_Room" + data.getRoomNumber() + "_" + data.getGuestName() + "_"
+                            + data.getCheckOutDate() + ".pdf");
+                    fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Documents", "*.pdf"));
+                    File f = fc.showSaveDialog(null);
+                    if (f != null) {
+                        try {
+                            generateInvoicePDF(f, data, null, 0.0);
+                            showAlert(Alert.AlertType.INFORMATION, "PDF Saved",
+                                    "Re-invoice saved to:\n" + f.getAbsolutePath());
+
+                            // Re-send email
+                            if (data.getGuestEmail() != null && !data.getGuestEmail().isEmpty()) {
+                                String email = data.getGuestEmail();
+                                Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION);
+                                confirmAlert.setTitle("Send Email");
+                                confirmAlert.setHeaderText(null);
+                                confirmAlert.setContentText("Also send this invoice to " + email + "?");
+                                if (confirmAlert.showAndWait().orElse(null) == ButtonType.OK) {
+                                    new Thread(() -> {
+                                        try {
+                                            EmailSender.sendInvoice(email, data.getGuestName(), data.getRoomNumber(),
+                                                    f);
+                                            javafx.application.Platform
+                                                    .runLater(() -> showAlert(Alert.AlertType.INFORMATION, "Email Sent",
+                                                            "Invoice emailed to: " + email));
+                                        } catch (Exception ex) {
+                                            javafx.application.Platform.runLater(() -> showAlert(
+                                                    Alert.AlertType.WARNING, "Email Failed",
+                                                    "Invoice saved but email could not be sent: " + ex.getMessage()));
+                                        }
+                                    }).start();
+                                }
+                            }
+                        } catch (Exception ex) {
+                            showAlert(Alert.AlertType.ERROR, "PDF Error", ex.getMessage());
+                        }
+                    }
+                });
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty)
+                    setGraphic(null);
+                else
+                    setGraphic(btn);
+            }
+        });
+
+        table.getColumns().addAll(c1, c2, c3, c_contact, c4, c5, c6, c7, c8, c9, c10);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
 
-        // Revenue summary bar (dynamically updated)
+        // Revenue summary bar
         ledgerSummaryLabel = new Label();
         ledgerSummaryLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: " + DARK_TEXT + ";");
-        double totalRev = historyList.stream().mapToDouble(HistoryRecord::getTotalPaid).sum();
-        ledgerSummaryLabel.setText(
-                String.format("Total Revenue: \u20B9%.2f  |  Total Checkouts: %d", totalRev, historyList.size()));
+        ledgerSummaryLabel.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(ledgerSummaryLabel, Priority.ALWAYS);
 
         // Auto-update when history changes
         historyList.addListener((javafx.collections.ListChangeListener<HistoryRecord>) change -> {
             updateLedgerSummary();
         });
-        Label revLabel = ledgerSummaryLabel;
 
-        HBox summaryBar = new HBox(revLabel);
+        Button btnExport = createStyledButton("⬇ Export Full Ledger as CSV", ROYAL_BLUE);
+        btnExport.setOnAction(e -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Save Ledger CSV");
+            fileChooser.setInitialFileName("MIT_Grand_Regency_Ledger_" + LocalDate.now().toString() + ".csv");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+            File file = fileChooser.showSaveDialog(null);
+            if (file != null) {
+                try (PrintWriter writer = new PrintWriter(file)) {
+                    writer.println(
+                            "Room#,Type,Guest Name,Contact,Check-In,Check-Out,Nights,Rate,Subtotal,GST%,Tax,Grand Total,Booked At");
+                    for (HistoryRecord hr : historyList) {
+                        writer.println(hr.toCSV());
+                    }
+                    showAlert(Alert.AlertType.INFORMATION, "Export Successful",
+                            "Ledger exported to:\n" + file.getAbsolutePath());
+                } catch (Exception ex) {
+                    showAlert(Alert.AlertType.ERROR, "Export Failed", ex.getMessage());
+                }
+            }
+        });
+
+        HBox summaryBar = new HBox(15, ledgerSummaryLabel, btnExport);
+        summaryBar.setAlignment(Pos.CENTER_LEFT);
         summaryBar.setPadding(new Insets(14, 20, 14, 20));
         summaryBar.setStyle(
-                "-fx-background-color: white;" +
-                        "-fx-background-radius: 10;" +
-                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 8, 0.0, 0, 2);");
+                "-fx-background-color: white; -fx-background-radius: 10; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 8, 0.0, 0, 2);");
 
         VBox root = new VBox(20,
-                createSectionHeader("Financial Ledger", "Complete checkout history and revenue records"),
-                summaryBar, table);
+                createSectionHeader("Financial Ledger", "Complete checkout history and revenue records"), summaryBar,
+                table);
         root.setPadding(new Insets(30));
         VBox.setVgrow(table, Priority.ALWAYS);
         return root;
@@ -1098,40 +2352,13 @@ public class HotelManagement extends Application {
     }
 
     private void styleTextField(TextField tf) {
-        tf.setStyle(
-                "-fx-font-size: 13px;" +
-                        "-fx-padding: 8 12;" +
-                        "-fx-background-radius: 8;" +
-                        "-fx-border-color: #ddd;" +
-                        "-fx-border-radius: 8;" +
-                        "-fx-background-color: #fefefe;");
-        tf.setOnMouseEntered(e -> tf.setStyle(
-                "-fx-font-size: 13px;" +
-                        "-fx-padding: 8 12;" +
-                        "-fx-background-radius: 8;" +
-                        "-fx-border-color: " + GOLD_ACCENT + ";" +
-                        "-fx-border-radius: 8;" +
-                        "-fx-background-color: white;"));
-        tf.setOnMouseExited(e -> {
-            if (!tf.isFocused()) {
-                tf.setStyle(
-                        "-fx-font-size: 13px;" +
-                                "-fx-padding: 8 12;" +
-                                "-fx-background-radius: 8;" +
-                                "-fx-border-color: #ddd;" +
-                                "-fx-border-radius: 8;" +
-                                "-fx-background-color: #fefefe;");
-            }
-        });
+        // Inline styles moved to styles.css targeting .text-field
     }
 
     private <T> void styleTable(TableView<T> table) {
-        table.setStyle(
-                "-fx-background-color: white;" +
-                        "-fx-background-radius: 12;" +
-                        "-fx-border-color: #e8e8e8;" +
-                        "-fx-border-radius: 12;" +
-                        "-fx-font-size: 13px;");
+        // Inline styles moved to styles.css targeting .table-view
+        // We ensure .table-view class is added and fixed cell size
+        table.getStyleClass().add("table-view");
         table.setFixedCellSize(40);
     }
 
@@ -1191,6 +2418,46 @@ public class HotelManagement extends Application {
         }
     }
 
+    private String safeGetString(ResultSet rs, String col) {
+        try {
+            return rs.getString(col);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private double safeGetDouble(ResultSet rs, String col) {
+        try {
+            return rs.getDouble(col);
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
+    private long safeGetLong(ResultSet rs, String col) {
+        try {
+            return rs.getLong(col);
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    private byte[] safeGetBytes(ResultSet rs, String col) {
+        try {
+            return rs.getBytes(col);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Timestamp safeGetTimestamp(ResultSet rs, String col) {
+        try {
+            return rs.getTimestamp(col);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private void loadData() {
         try (Connection conn = getConnection();
                 Statement stmt = conn.createStatement()) {
@@ -1203,26 +2470,83 @@ public class HotelManagement extends Application {
                         ? rs.getDate("expected_checkout_date").toLocalDate()
                         : null;
 
-                roomList.add(new Room(
+                String checkOutTimeString = null;
+                try {
+                    checkOutTimeString = rs.getString("checkout_time");
+                } catch (Exception ignored) {
+                } // Ignore if column doesn't exist yet
+
+                Room r = new Room(
                         rs.getString("room_number"),
                         rs.getString("room_type"),
                         rs.getDouble("price"),
                         rs.getString("status"),
                         rs.getString("customer_name"),
                         rs.getString("contact_number"),
+                        rs.getString("guest_email"),
+                        rs.getString("guest_address"),
                         inDate,
-                        outDate));
+                        outDate,
+                        rs.getBytes("aadhaar_image"),
+                        checkOutTimeString);
+
+                try {
+                    r.setPriority(rs.getBoolean("priority"));
+                } catch (Exception ignored) {
+                } // Ignore if column doesn't exist yet
+
+                roomList.add(r);
             }
 
-            ResultSet rsHist = stmt
-                    .executeQuery("SELECT room_number, guest_name, checkout_date, total_paid FROM checkout_history");
+            ResultSet rsHist = stmt.executeQuery("SELECT * FROM checkout_history");
             while (rsHist.next()) {
+                Timestamp ts = safeGetTimestamp(rsHist, "booked_at");
+                LocalDateTime booked = ts != null ? ts.toLocalDateTime() : LocalDateTime.now();
                 historyList.add(new HistoryRecord(
                         rsHist.getString("room_number"),
+                        safeGetString(rsHist, "room_type"),
                         rsHist.getString("guest_name"),
-                        rsHist.getString("checkout_date"),
-                        rsHist.getDouble("total_paid")));
+                        safeGetString(rsHist, "contact_number"),
+                        safeGetString(rsHist, "guest_email"),
+                        safeGetString(rsHist, "guest_address"),
+                        safeGetString(rsHist, "check_in_date"),
+                        safeGetString(rsHist, "checkout_date"),
+                        safeGetDouble(rsHist, "price_per_night"),
+                        safeGetLong(rsHist, "nights"),
+                        safeGetDouble(rsHist, "subtotal"),
+                        safeGetDouble(rsHist, "tax_amount"),
+                        safeGetDouble(rsHist, "gst_rate"),
+                        safeGetDouble(rsHist, "total_paid"), // Assume total_paid always exists since it's an old col
+                        booked,
+                        safeGetBytes(rsHist, "aadhaar_image")));
             }
+            ResultSet rsMenu = stmt.executeQuery("SELECT * FROM menu_items");
+            while (rsMenu.next()) {
+                menuItemList.add(new MenuItem(
+                        rsMenu.getString("item_code"),
+                        rsMenu.getString("item_name"),
+                        rsMenu.getString("category"),
+                        rsMenu.getDouble("unit_price")));
+            }
+
+            ResultSet rsOrders = stmt.executeQuery("SELECT * FROM restaurant_orders");
+            while (rsOrders.next()) {
+                Timestamp tsOrder = rsOrders.getTimestamp("order_time");
+                LocalDateTime tOrder = tsOrder != null ? tsOrder.toLocalDateTime() : LocalDateTime.now();
+                restaurantOrderList.add(new RestaurantOrder(
+                        rsOrders.getInt("id"),
+                        rsOrders.getString("room_number"),
+                        rsOrders.getString("guest_name"),
+                        rsOrders.getString("item_code"),
+                        rsOrders.getString("item_name"),
+                        rsOrders.getString("category"),
+                        rsOrders.getDouble("unit_price"),
+                        rsOrders.getInt("quantity"),
+                        rsOrders.getDouble("total_price"),
+                        tOrder,
+                        rsOrders.getBoolean("settled")));
+            }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -1236,7 +2560,7 @@ public class HotelManagement extends Application {
                 clearRooms.executeUpdate("DELETE FROM rooms");
             }
 
-            String insertRoom = "REPLACE INTO rooms (room_number, room_type, price, status, customer_name, contact_number, check_in_date, expected_checkout_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            String insertRoom = "REPLACE INTO rooms (room_number, room_type, price, status, customer_name, contact_number, guest_email, guest_address, check_in_date, expected_checkout_date, aadhaar_image, checkout_time, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement pstmt = conn.prepareStatement(insertRoom)) {
                 for (Room r : roomList) {
                     pstmt.setString(1, r.getRoomNumber());
@@ -1245,11 +2569,21 @@ public class HotelManagement extends Application {
                     pstmt.setString(4, r.getStatus());
                     pstmt.setString(5, r.getCustomerName());
                     pstmt.setString(6, r.getContactNumber());
-                    pstmt.setDate(7, r.getCheckInDate() != null ? java.sql.Date.valueOf(r.getCheckInDate()) : null);
-                    pstmt.setDate(8,
+                    pstmt.setString(7, r.getGuestEmail());
+                    pstmt.setString(8, r.getGuestAddress());
+                    pstmt.setDate(9, r.getCheckInDate() != null ? java.sql.Date.valueOf(r.getCheckInDate()) : null);
+                    pstmt.setDate(10,
                             r.getExpectedCheckOutDate() != null ? java.sql.Date.valueOf(r.getExpectedCheckOutDate())
                                     : null);
-                    pstmt.executeUpdate();
+                    pstmt.setBytes(11, r.getAadhaarImage());
+                    pstmt.setString(12, r.getCheckOutTime());
+                    pstmt.setBoolean(13, r.isPriority());
+                    try {
+                        pstmt.executeUpdate();
+                    } catch (Exception saveEx) {
+                        System.err.println("Could not save room " + r.getRoomNumber()
+                                + ": maybe checkout_time/priority column missing.");
+                    }
                 }
             }
 
@@ -1257,13 +2591,26 @@ public class HotelManagement extends Application {
                 clearHist.executeUpdate("DELETE FROM checkout_history");
             }
 
-            String insertHist = "REPLACE INTO checkout_history (id, room_number, guest_name, checkout_date, total_paid) VALUES (NULL, ?, ?, ?, ?)";
+            String insertHist = "REPLACE INTO checkout_history (id, room_number, room_type, guest_name, contact_number, guest_email, guest_address, check_in_date, checkout_date, price_per_night, nights, subtotal, tax_amount, gst_rate, total_paid, booked_at, aadhaar_image) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement pstmt = conn.prepareStatement(insertHist)) {
                 for (HistoryRecord h : historyList) {
                     pstmt.setString(1, h.getRoomNumber());
-                    pstmt.setString(2, h.getGuestName());
-                    pstmt.setString(3, h.getCheckOut());
-                    pstmt.setDouble(4, h.getTotalPaid());
+                    pstmt.setString(2, h.getRoomType());
+                    pstmt.setString(3, h.getGuestName());
+                    pstmt.setString(4, h.getContactNumber());
+                    pstmt.setString(5, h.getGuestEmail());
+                    pstmt.setString(6, h.getGuestAddress());
+                    pstmt.setString(7, h.getCheckInDate());
+                    pstmt.setString(8, h.getCheckOutDate());
+                    pstmt.setDouble(9, h.getPricePerNight());
+                    pstmt.setLong(10, h.getNights());
+                    pstmt.setDouble(11, h.getSubtotal());
+                    pstmt.setDouble(12, h.getTaxAmount());
+                    pstmt.setDouble(13, h.getGstRate());
+                    pstmt.setDouble(14, h.getTotalPaid());
+                    pstmt.setTimestamp(15, h.getBookedAt() != null ? Timestamp.valueOf(h.getBookedAt())
+                            : Timestamp.valueOf(LocalDateTime.now()));
+                    pstmt.setBytes(16, h.getAadhaarImage());
                     pstmt.executeUpdate();
                 }
             }
@@ -1271,6 +2618,217 @@ public class HotelManagement extends Application {
             conn.commit();
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private void saveRestaurantOrders() {
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try (Statement clearOrders = conn.createStatement()) {
+                clearOrders.executeUpdate("DELETE FROM restaurant_orders");
+            }
+            String insertOrders = "REPLACE INTO restaurant_orders (id, room_number, guest_name, item_code, item_name, category, unit_price, quantity, total_price, order_time, settled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            try (PreparedStatement pstmt = conn.prepareStatement(insertOrders)) {
+                for (RestaurantOrder o : restaurantOrderList) {
+                    if (o.getId() == 0)
+                        pstmt.setNull(1, java.sql.Types.INTEGER);
+                    else
+                        pstmt.setInt(1, o.getId());
+                    pstmt.setString(2, o.getRoomNumber());
+                    pstmt.setString(3, o.getGuestName());
+                    pstmt.setString(4, o.getItemCode());
+                    pstmt.setString(5, o.getItemName());
+                    pstmt.setString(6, o.getCategory());
+                    pstmt.setDouble(7, o.getUnitPrice());
+                    pstmt.setInt(8, o.getQuantity());
+                    pstmt.setDouble(9, o.getTotalPrice());
+                    pstmt.setTimestamp(10, o.getOrderTime() != null ? Timestamp.valueOf(o.getOrderTime())
+                            : Timestamp.valueOf(LocalDateTime.now()));
+                    pstmt.setBoolean(11, o.isSettled());
+                    pstmt.executeUpdate();
+                }
+            }
+            conn.commit();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void generateInvoicePDF(File file, HistoryRecord hr, List<RestaurantOrder> orders, double resTotal)
+            throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+
+            String invoiceNumber = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+
+            PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            PDType1Font fontNormal = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+
+            // PDFBox 3.x requires RGB values as floats in the range 0.0–1.0 (not 0–255)
+            // Helper constants
+            float[] GOLD = { 201 / 255f, 169 / 255f, 110 / 255f };
+            float[] WHITE = { 1f, 1f, 1f };
+            float[] BLACK = { 0f, 0f, 0f };
+            float[] GRAY = { 100 / 255f, 100 / 255f, 100 / 255f };
+
+            try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
+
+                // ── Header gold band ────────────────────────────────────────
+                cs.setNonStrokingColor(GOLD[0], GOLD[1], GOLD[2]);
+                cs.addRect(0, 740, 612, 52);
+                cs.fill();
+
+                // Hotel name on header
+                cs.beginText();
+                cs.setFont(fontBold, 24);
+                cs.setNonStrokingColor(WHITE[0], WHITE[1], WHITE[2]);
+                cs.newLineAtOffset(50, 755);
+                cs.showText("MIT Grand Regency");
+                cs.endText();
+
+                // ── Gold rule under header ───────────────────────────────────
+                cs.setStrokingColor(GOLD[0], GOLD[1], GOLD[2]);
+                cs.setLineWidth(2f);
+                cs.moveTo(50, 720);
+                cs.lineTo(562, 720);
+                cs.stroke();
+
+                // ── Invoice metadata (left column) ──────────────────────────
+                cs.beginText();
+                cs.setNonStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.setFont(fontBold, 16);
+                cs.newLineAtOffset(50, 690);
+                cs.showText("INVOICE");
+
+                cs.setFont(fontNormal, 12);
+                cs.newLineAtOffset(0, -20);
+                cs.showText("Invoice Number: " + invoiceNumber);
+                cs.newLineAtOffset(0, -15);
+                cs.showText("Date: " + LocalDate.now().toString());
+                cs.newLineAtOffset(0, -15);
+                cs.showText("Room: " + hr.getRoomNumber() + " (" + hr.getRoomType() + ")");
+                cs.endText();
+
+                // ── Billed To (right column) ─────────────────────────────────
+                cs.beginText();
+                cs.setNonStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.setFont(fontBold, 12);
+                cs.newLineAtOffset(350, 690);
+                cs.showText("Billed To:");
+
+                cs.setFont(fontNormal, 12);
+                cs.newLineAtOffset(0, -15);
+                cs.showText(hr.getGuestName());
+                cs.newLineAtOffset(0, -15);
+                cs.showText("Contact: " + hr.getContactNumber());
+                cs.newLineAtOffset(0, -15);
+                cs.showText("Check-In:  " + hr.getCheckInDate());
+                cs.newLineAtOffset(0, -15);
+                cs.showText("Total Nights: " + hr.getNights());
+                cs.endText();
+
+                // ── Table header lines ───────────────────────────────────────
+                int tableTop = 560;
+                cs.setStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.setLineWidth(1f);
+                cs.moveTo(50, tableTop);
+                cs.lineTo(562, tableTop);
+                cs.moveTo(50, tableTop - 25);
+                cs.lineTo(562, tableTop - 25);
+                cs.stroke();
+
+                // Column headers
+                cs.beginText();
+                cs.setNonStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.setFont(fontBold, 12);
+                cs.newLineAtOffset(60, tableTop - 16);
+                cs.showText("Description");
+                cs.newLineAtOffset(240, 0);
+                cs.showText("Quantity");
+                cs.newLineAtOffset(80, 0);
+                cs.showText("Unit Rate");
+                cs.newLineAtOffset(100, 0);
+                cs.showText("Amount");
+                cs.endText();
+
+                // ── Room charge row ──────────────────────────────────────────
+                cs.beginText();
+                cs.setNonStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.setFont(fontNormal, 12);
+                cs.newLineAtOffset(60, tableTop - 45);
+                cs.showText(hr.getRoomType() + " Room (" + hr.getNights() + " nights)");
+                cs.newLineAtOffset(240, 0);
+                cs.showText("1");
+                cs.newLineAtOffset(80, 0);
+                cs.showText(String.format("Rs. %.2f", hr.getSubtotal()));
+                cs.newLineAtOffset(100, 0);
+                cs.showText(String.format("Rs. %.2f", hr.getSubtotal()));
+                cs.endText();
+
+                int currentY = tableTop - 65;
+
+                // ── Restaurant line items ──────────────────────────
+                if (orders != null && !orders.isEmpty()) {
+                    for (RestaurantOrder o : orders) {
+                        cs.beginText();
+                        cs.setNonStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                        cs.setFont(fontNormal, 12);
+                        cs.newLineAtOffset(60, currentY);
+                        cs.showText("Dining: " + o.getItemName());
+                        cs.newLineAtOffset(240, 0);
+                        cs.showText(String.valueOf(o.getQuantity()));
+                        cs.newLineAtOffset(80, 0);
+                        cs.showText(String.format("Rs. %.2f", o.getUnitPrice()));
+                        cs.newLineAtOffset(100, 0);
+                        cs.showText(String.format("Rs. %.2f", o.getTotalPrice()));
+                        cs.endText();
+                        currentY -= 20;
+                    }
+                }
+
+                // ── GST row ──
+                cs.beginText();
+                cs.setNonStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.setFont(fontNormal, 12);
+                cs.newLineAtOffset(60, currentY);
+                cs.showText(String.format("GST (%.1f%%)", hr.getGstRate()));
+                cs.newLineAtOffset(240, 0);
+                cs.showText("-");
+                cs.newLineAtOffset(80, 0);
+                cs.showText("-");
+                cs.newLineAtOffset(100, 0);
+                cs.showText(String.format("Rs. %.2f", hr.getTaxAmount()));
+                cs.endText();
+
+                // ── Table bottom border ──────────────────────────────────────
+                cs.setStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.moveTo(50, currentY - 20);
+                cs.lineTo(562, currentY - 20);
+                cs.stroke();
+
+                // ── Grand total ──────────────────────────────────────────────
+                cs.beginText();
+                cs.setNonStrokingColor(BLACK[0], BLACK[1], BLACK[2]);
+                cs.setFont(fontBold, 14);
+                cs.newLineAtOffset(350, currentY - 45);
+                cs.showText("Grand Total:");
+                cs.newLineAtOffset(100, 0);
+                cs.showText(String.format("Rs. %.2f", hr.getTotalPaid()));
+                cs.endText();
+
+                // ── Footer ───────────────────────────────────────────────────
+                cs.beginText();
+                cs.setNonStrokingColor(GRAY[0], GRAY[1], GRAY[2]);
+                cs.setFont(fontNormal, 10);
+                cs.newLineAtOffset(50, 100);
+                cs.showText("Thank you for staying at MIT Grand Regency. We hope to see you again soon.");
+                cs.newLineAtOffset(0, -15);
+                cs.showText("This is a computer-generated invoice and does not require a physical signature.");
+                cs.endText();
+            }
+
+            document.save(file);
         }
     }
 
@@ -1284,6 +2842,92 @@ public class HotelManagement extends Application {
                         "-fx-font-size: 13px;");
         a.getDialogPane().setMinWidth(450);
         a.showAndWait();
+    }
+
+    public static class EmailSender {
+        private static final String FROM_EMAIL = "tharunadithyan2004@gmail.com"; // replace with actual
+        private static final String APP_PASSWORD = "vkgi egxl gfke gyhw"; // TODO: move to config file for production
+
+        public static void sendInvoice(String toEmail, String guestName, String roomNumber, File pdfFile)
+                throws Exception {
+            System.out.println("[EmailSender] Attempting to send to: " + toEmail);
+            System.out.println("[EmailSender] PDF file exists: " + (pdfFile != null && pdfFile.exists()) + ", size: "
+                    + (pdfFile != null ? pdfFile.length() : 0));
+
+            Properties prop = new Properties();
+            prop.put("mail.smtp.auth", "true");
+            prop.put("mail.smtp.starttls.enable", "true");
+            prop.put("mail.smtp.host", "smtp.gmail.com");
+            prop.put("mail.smtp.port", "587");
+            prop.put("mail.smtp.ssl.trust", "smtp.gmail.com");
+            prop.put("mail.smtp.ssl.protocols", "TLSv1.2");
+            prop.put("mail.smtp.connectiontimeout", "10000");
+            prop.put("mail.smtp.timeout", "10000");
+
+            Session session = Session.getInstance(prop, new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    return new PasswordAuthentication(FROM_EMAIL, APP_PASSWORD);
+                }
+            });
+
+            // Bypass JAF dependency completely by constructing the raw MIME bytestream
+            // natively
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            PrintWriter writer = new PrintWriter(new OutputStreamWriter(baos, "UTF-8"));
+
+            String htmlBody = "<div style=\"font-family:Georgia,serif;color:#1a1a2e;max-width:600px;\">\n" +
+                    "  <div style=\"background:#c9a96e;padding:20px;\">\n" +
+                    "    <h1 style=\"color:white;margin:0;\">MIT Grand Regency</h1>\n" +
+                    "    <p style=\"color:white;margin:0;font-size:12px;\">Luxury Hospitality Management</p>\n" +
+                    "  </div>\n" +
+                    "  <div style=\"padding:20px;\">\n" +
+                    "    <p>Dear <strong>" + guestName + "</strong>,</p>\n" +
+                    "    <p>Thank you for staying with us. Please find your invoice attached for Room <strong>"
+                    + roomNumber + "</strong>.</p>\n" +
+                    "    <p>We look forward to welcoming you again.</p>\n" +
+                    "    <p style=\"color:#c9a96e;font-weight:bold;\">\u2014 MIT Grand Regency Team</p>\n" +
+                    "  </div>\n" +
+                    "</div>";
+
+            writer.print("From: " + FROM_EMAIL + "\r\n");
+            writer.print("To: " + toEmail + "\r\n");
+            writer.print("Subject: Your Invoice \u2014 MIT Grand Regency, Room " + roomNumber + "\r\n");
+            writer.print("MIME-Version: 1.0\r\n");
+            String boundary = "=_Part_" + System.currentTimeMillis();
+            writer.print("Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\n");
+            writer.print("\r\n");
+
+            writer.print("--" + boundary + "\r\n");
+            writer.print("Content-Type: text/html; charset=utf-8\r\n");
+            writer.print("Content-Transfer-Encoding: 7bit\r\n\r\n");
+            writer.print(htmlBody + "\r\n\r\n");
+
+            if (pdfFile != null && pdfFile.exists()) {
+                writer.print("--" + boundary + "\r\n");
+                writer.print("Content-Type: application/pdf; name=\"" + pdfFile.getName() + "\"\r\n");
+                writer.print("Content-Transfer-Encoding: base64\r\n");
+                writer.print("Content-Disposition: attachment; filename=\"" + pdfFile.getName() + "\"\r\n\r\n");
+                writer.flush();
+
+                byte[] fileBytes = Files.readAllBytes(pdfFile.toPath());
+                String b64 = java.util.Base64.getEncoder().encodeToString(fileBytes);
+                String formattedB64 = b64.replaceAll("(.{76})", "$1\r\n");
+                writer.print(formattedB64 + "\r\n");
+            }
+
+            writer.print("--" + boundary + "--\r\n");
+            writer.flush();
+
+            MimeMessage message = new MimeMessage(session, new ByteArrayInputStream(baos.toByteArray()));
+            try {
+                Transport.send(message);
+                System.out.println("[EmailSender] Email sent successfully to: " + toEmail);
+            } catch (Exception ex) {
+                System.err.println("[EmailSender] FAILED: " + ex.getMessage());
+                throw new RuntimeException("SMTP send failed: " + ex.getMessage(), ex);
+            }
+        }
     }
 
     public static void main(String[] args) {

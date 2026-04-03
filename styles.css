@@ -1,0 +1,80 @@
+/* Base font */
+* {
+    -fx-font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Tooltips */
+.tooltip {
+    -fx-font-size: 12px;
+    -fx-background-radius: 6;
+    -fx-background-color: #1a1a2e;
+    -fx-text-fill: #c9a96e;
+}
+
+/* Tables */
+.table-view {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-border-color: #e8e8e8;
+    -fx-border-radius: 12;
+    -fx-font-size: 13px;
+}
+.table-row-cell:hover {
+    -fx-background-color: #fff8ee;
+}
+.table-row-cell:selected {
+    -fx-background-color: #c9a96e;
+}
+.table-row-cell:selected .table-cell {
+    -fx-text-fill: #1a1a2e;
+    -fx-font-weight: bold;
+}
+.table-row-cell:filled:selected:focused {
+    -fx-background-color: #c9a96e;
+}
+.table-row-cell:filled:selected:focused .table-cell {
+    -fx-text-fill: #1a1a2e;
+}
+.row-success {
+    -fx-background-color: #e8f8f0 !important;
+}
+
+/* TextField */
+.text-field {
+    -fx-font-size: 13px;
+    -fx-padding: 8 12;
+    -fx-background-radius: 8;
+    -fx-border-color: #ddd;
+    -fx-border-radius: 8;
+    -fx-background-color: #fefefe;
+}
+.text-field:focused, .text-field:hover {
+    -fx-border-color: #c9a96e;
+    -fx-background-color: white;
+}
+
+/* ComboBox */
+.combo-box {
+    -fx-font-size: 13px;
+}
+
+/* Spinner */
+.spinner {
+    -fx-font-size: 13px;
+}
+
+/* ScrollPane */
+.scroll-pane {
+    -fx-background: transparent;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+.scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+
+/* Button overrides (keeping colored backgrounds from code, only applying hover) */
+.button:hover {
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 8, 0.0, 0, 2);
+    -fx-opacity: 0.9;
+}

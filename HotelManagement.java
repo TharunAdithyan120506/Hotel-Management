@@ -23,7 +23,7 @@ ALTER TABLE checkout_history
   ADD COLUMN IF NOT EXISTS booked_at DATETIME;
 
 CREATE TABLE IF NOT EXISTS menu_items (
-  item_code VARCHAR(20) PRIMARY KEY,
+  item_code VARCHAR(20) PRIMARY KEY,a
   item_name VARCHAR(100),
   category VARCHAR(50),
   unit_price DOUBLE
@@ -722,49 +722,49 @@ public class HotelManagement extends Application {
 
     private void ensureSchema() {
         String[] statements = {
-            "CREATE TABLE IF NOT EXISTS settings (" +
-                "setting_key VARCHAR(50) PRIMARY KEY, setting_value VARCHAR(100))",
+                "CREATE TABLE IF NOT EXISTS settings (" +
+                        "setting_key VARCHAR(50) PRIMARY KEY, setting_value VARCHAR(100))",
 
-            "CREATE TABLE IF NOT EXISTS rooms (" +
-                "room_number VARCHAR(10) PRIMARY KEY, room_type VARCHAR(20), price DOUBLE," +
-                "status VARCHAR(30) DEFAULT 'Available', customer_name VARCHAR(100)," +
-                "contact_number VARCHAR(20), guest_email VARCHAR(100), guest_address VARCHAR(255)," +
-                "check_in_date DATE, expected_checkout_date DATE, aadhaar_image LONGBLOB," +
-                "checkout_time VARCHAR(30), priority BOOLEAN DEFAULT FALSE)",
+                "CREATE TABLE IF NOT EXISTS rooms (" +
+                        "room_number VARCHAR(10) PRIMARY KEY, room_type VARCHAR(20), price DOUBLE," +
+                        "status VARCHAR(30) DEFAULT 'Available', customer_name VARCHAR(100)," +
+                        "contact_number VARCHAR(20), guest_email VARCHAR(100), guest_address VARCHAR(255)," +
+                        "check_in_date DATE, expected_checkout_date DATE, aadhaar_image LONGBLOB," +
+                        "checkout_time VARCHAR(30), priority BOOLEAN DEFAULT FALSE)",
 
-            "CREATE TABLE IF NOT EXISTS checkout_history (" +
-                "id INT AUTO_INCREMENT PRIMARY KEY, room_number VARCHAR(10), room_type VARCHAR(20)," +
-                "guest_name VARCHAR(100), contact_number VARCHAR(20), guest_email VARCHAR(100)," +
-                "guest_address VARCHAR(255), check_in_date VARCHAR(20), checkout_date VARCHAR(20)," +
-                "price_per_night DOUBLE DEFAULT 0, nights INT DEFAULT 0, subtotal DOUBLE DEFAULT 0," +
-                "tax_amount DOUBLE DEFAULT 0, gst_rate DOUBLE DEFAULT 18, total_paid DOUBLE DEFAULT 0," +
-                "booked_at DATETIME, aadhaar_image LONGBLOB)",
+                "CREATE TABLE IF NOT EXISTS checkout_history (" +
+                        "id INT AUTO_INCREMENT PRIMARY KEY, room_number VARCHAR(10), room_type VARCHAR(20)," +
+                        "guest_name VARCHAR(100), contact_number VARCHAR(20), guest_email VARCHAR(100)," +
+                        "guest_address VARCHAR(255), check_in_date VARCHAR(20), checkout_date VARCHAR(20)," +
+                        "price_per_night DOUBLE DEFAULT 0, nights INT DEFAULT 0, subtotal DOUBLE DEFAULT 0," +
+                        "tax_amount DOUBLE DEFAULT 0, gst_rate DOUBLE DEFAULT 18, total_paid DOUBLE DEFAULT 0," +
+                        "booked_at DATETIME, aadhaar_image LONGBLOB)",
 
-            "CREATE TABLE IF NOT EXISTS menu_items (" +
-                "item_code VARCHAR(20) PRIMARY KEY, item_name VARCHAR(100)," +
-                "category VARCHAR(50), unit_price DOUBLE)",
+                "CREATE TABLE IF NOT EXISTS menu_items (" +
+                        "item_code VARCHAR(20) PRIMARY KEY, item_name VARCHAR(100)," +
+                        "category VARCHAR(50), unit_price DOUBLE)",
 
-            "CREATE TABLE IF NOT EXISTS restaurant_orders (" +
-                "id INT AUTO_INCREMENT PRIMARY KEY, room_number VARCHAR(10), guest_name VARCHAR(100)," +
-                "item_code VARCHAR(20), item_name VARCHAR(100), category VARCHAR(50)," +
-                "unit_price DOUBLE, quantity INT, total_price DOUBLE," +
-                "order_time DATETIME, settled BOOLEAN DEFAULT FALSE)",
+                "CREATE TABLE IF NOT EXISTS restaurant_orders (" +
+                        "id INT AUTO_INCREMENT PRIMARY KEY, room_number VARCHAR(10), guest_name VARCHAR(100)," +
+                        "item_code VARCHAR(20), item_name VARCHAR(100), category VARCHAR(50)," +
+                        "unit_price DOUBLE, quantity INT, total_price DOUBLE," +
+                        "order_time DATETIME, settled BOOLEAN DEFAULT FALSE)",
 
-            // Safe ALTER — adds missing columns to existing tables without error
-            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS checkout_time VARCHAR(30)",
-            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS priority BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS room_type VARCHAR(20)",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS contact_number VARCHAR(20)",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS guest_email VARCHAR(100)",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS guest_address VARCHAR(255)",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS check_in_date VARCHAR(20)",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS price_per_night DOUBLE DEFAULT 0",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS nights INT DEFAULT 0",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS subtotal DOUBLE DEFAULT 0",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS tax_amount DOUBLE DEFAULT 0",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS gst_rate DOUBLE DEFAULT 18",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS aadhaar_image LONGBLOB",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS booked_at DATETIME"
+                // Safe ALTER — adds missing columns to existing tables without error
+                "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS checkout_time VARCHAR(30)",
+                "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS priority BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS room_type VARCHAR(20)",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS contact_number VARCHAR(20)",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS guest_email VARCHAR(100)",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS guest_address VARCHAR(255)",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS check_in_date VARCHAR(20)",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS price_per_night DOUBLE DEFAULT 0",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS nights INT DEFAULT 0",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS subtotal DOUBLE DEFAULT 0",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS tax_amount DOUBLE DEFAULT 0",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS gst_rate DOUBLE DEFAULT 18",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS aadhaar_image LONGBLOB",
+                "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS booked_at DATETIME"
         };
 
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
@@ -805,7 +805,8 @@ public class HotelManagement extends Application {
     @Override
     public void start(Stage primaryStage) {
         ensureSchema();
-        // resetAllData(); // CAUTION: Uncomment to do a clean slate rebuild, then comment out again
+        // resetAllData(); // CAUTION: Uncomment to do a clean slate rebuild, then
+        // comment out again
         loadSettings();
         loadData();
 
@@ -1451,6 +1452,7 @@ public class HotelManagement extends Application {
         TableColumn<Room, String> colStat = new TableColumn<>("Status");
         colStat.setCellValueFactory(new PropertyValueFactory<>("status"));
         colStat.setCellFactory(c -> new TableCell<Room, String>() {
+
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
@@ -1836,10 +1838,12 @@ public class HotelManagement extends Application {
 
         btnOut.setOnAction(e -> {
             Room r = table.getSelectionModel().getSelectedItem();
-            if (r == null) return;
+            if (r == null)
+                return;
 
             long days = ChronoUnit.DAYS.between(r.getCheckInDate(), LocalDate.now());
-            if (days == 0) days = 1;
+            if (days == 0)
+                days = 1;
 
             double subtotal = days * r.getPrice();
             double tax = subtotal * (gstRate / 100.0);
@@ -1869,23 +1873,34 @@ public class HotelManagement extends Application {
             previewGrid.setHgap(10);
             previewGrid.setVgap(10);
             previewGrid.setPadding(new Insets(20, 150, 10, 10));
-            previewGrid.add(new Label("Guest:"),         0, 0); previewGrid.add(new Label(record.getGuestName()), 1, 0);
-            previewGrid.add(new Label("Email:"),         0, 1); previewGrid.add(new Label(record.getGuestEmail() != null && !record.getGuestEmail().isEmpty() ? record.getGuestEmail() : "—"), 1, 1);
-            previewGrid.add(new Label("Check-In:"),      0, 2); previewGrid.add(new Label(record.getCheckInDate()), 1, 2);
-            previewGrid.add(new Label("Nights:"),        0, 3); previewGrid.add(new Label(String.valueOf(record.getNights())), 1, 3);
-            previewGrid.add(new Label("Room Subtotal:"), 0, 4); previewGrid.add(new Label(String.format("₹ %.2f", record.getSubtotal())), 1, 4);
-            previewGrid.add(new Label("GST (" + (int)gstRate + "%):"), 0, 5); previewGrid.add(new Label(String.format("₹ %.2f", record.getTaxAmount())), 1, 5);
-            previewGrid.add(new Label("Dining/POS:"),    0, 6); previewGrid.add(new Label(String.format("₹ %.2f", resTotal)), 1, 6);
+            previewGrid.add(new Label("Guest:"), 0, 0);
+            previewGrid.add(new Label(record.getGuestName()), 1, 0);
+            previewGrid.add(new Label("Email:"), 0, 1);
+            previewGrid.add(new Label(
+                    record.getGuestEmail() != null && !record.getGuestEmail().isEmpty() ? record.getGuestEmail() : "—"),
+                    1, 1);
+            previewGrid.add(new Label("Check-In:"), 0, 2);
+            previewGrid.add(new Label(record.getCheckInDate()), 1, 2);
+            previewGrid.add(new Label("Nights:"), 0, 3);
+            previewGrid.add(new Label(String.valueOf(record.getNights())), 1, 3);
+            previewGrid.add(new Label("Room Subtotal:"), 0, 4);
+            previewGrid.add(new Label(String.format("₹ %.2f", record.getSubtotal())), 1, 4);
+            previewGrid.add(new Label("GST (" + (int) gstRate + "%):"), 0, 5);
+            previewGrid.add(new Label(String.format("₹ %.2f", record.getTaxAmount())), 1, 5);
+            previewGrid.add(new Label("Dining/POS:"), 0, 6);
+            previewGrid.add(new Label(String.format("₹ %.2f", resTotal)), 1, 6);
             Label totalLabel = new Label(String.format("₹ %.2f", record.getTotalPaid()));
             totalLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
-            previewGrid.add(new Label("Grand Total:"),   0, 7); previewGrid.add(totalLabel, 1, 7);
+            previewGrid.add(new Label("Grand Total:"), 0, 7);
+            previewGrid.add(totalLabel, 1, 7);
 
             dialog.getDialogPane().setContent(previewGrid);
             ButtonType btnConfirmPdf = new ButtonType("Confirm & Generate Invoice", ButtonBar.ButtonData.OK_DONE);
             dialog.getDialogPane().getButtonTypes().addAll(btnConfirmPdf, ButtonType.CANCEL);
 
             Optional<ButtonType> result = dialog.showAndWait();
-            if (result.isEmpty() || result.get() != btnConfirmPdf) return;
+            if (result.isEmpty() || result.get() != btnConfirmPdf)
+                return;
 
             // ── Step 2: Choose where to save the PDF ─────────────────────────────
             FileChooser fileChooser = new FileChooser();
@@ -1901,7 +1916,8 @@ public class HotelManagement extends Application {
 
             // ── Step 3: Generate PDF & commit checkout ────────────────────────────
             try {
-                for (RestaurantOrder o : settledNow) o.settledProperty().set(true);
+                for (RestaurantOrder o : settledNow)
+                    o.settledProperty().set(true);
                 restaurantOrderList.removeAll(settledNow);
 
                 generateInvoicePDF(file, record, settledNow, resTotal);
@@ -1936,7 +1952,8 @@ public class HotelManagement extends Application {
             postDialog.setTitle("Checkout Complete");
             postDialog.setHeaderText("✅ Invoice saved successfully");
             postDialog.setContentText("PDF saved to:\n" + file.getAbsolutePath() +
-                    (hasEmail ? "\n\nRegistered email: " + record.getGuestEmail() : "\n\n⚠ No email on file for this guest."));
+                    (hasEmail ? "\n\nRegistered email: " + record.getGuestEmail()
+                            : "\n\n⚠ No email on file for this guest."));
 
             if (hasEmail) {
                 postDialog.getButtonTypes().setAll(btnSendEmail, btnSaveAnother, btnDone);
@@ -1953,13 +1970,11 @@ public class HotelManagement extends Application {
                 new Thread(() -> {
                     try {
                         EmailSender.sendInvoice(guestEmail, record.getGuestName(), record.getRoomNumber(), invoiceFile);
-                        javafx.application.Platform.runLater(() ->
-                                showAlert(Alert.AlertType.INFORMATION, "Email Sent",
-                                        "Invoice successfully emailed to:\n" + guestEmail));
+                        javafx.application.Platform.runLater(() -> showAlert(Alert.AlertType.INFORMATION, "Email Sent",
+                                "Invoice successfully emailed to:\n" + guestEmail));
                     } catch (Exception ex) {
-                        javafx.application.Platform.runLater(() ->
-                                showAlert(Alert.AlertType.WARNING, "Email Failed",
-                                        "Invoice was saved but the email could not be sent.\n\nReason: " + ex.getMessage()));
+                        javafx.application.Platform.runLater(() -> showAlert(Alert.AlertType.WARNING, "Email Failed",
+                                "Invoice was saved but the email could not be sent.\n\nReason: " + ex.getMessage()));
                     }
                 }).start();
 
@@ -2517,7 +2532,8 @@ public class HotelManagement extends Application {
                     fc.setInitialFileName("Reinvoice_Room" + data.getRoomNumber() + "_" + data.getGuestName() + ".pdf");
                     fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Documents", "*.pdf"));
                     File f = fc.showSaveDialog(null);
-                    if (f == null) return;
+                    if (f == null)
+                        return;
 
                     try {
                         generateInvoicePDF(f, data, null, 0.0);
@@ -2527,9 +2543,9 @@ public class HotelManagement extends Application {
                     }
 
                     boolean hasEmail = data.getGuestEmail() != null && !data.getGuestEmail().isEmpty();
-                    ButtonType btnMail    = new ButtonType("📧 Send via Email", ButtonBar.ButtonData.LEFT);
-                    ButtonType btnCopy    = new ButtonType("🖨️ Save Another Copy", ButtonBar.ButtonData.OTHER);
-                    ButtonType btnClose   = new ButtonType("Done", ButtonBar.ButtonData.OK_DONE);
+                    ButtonType btnMail = new ButtonType("📧 Send via Email", ButtonBar.ButtonData.LEFT);
+                    ButtonType btnCopy = new ButtonType("🖨️ Save Another Copy", ButtonBar.ButtonData.OTHER);
+                    ButtonType btnClose = new ButtonType("Done", ButtonBar.ButtonData.OK_DONE);
 
                     Alert post = new Alert(Alert.AlertType.INFORMATION);
                     post.setTitle("Invoice Saved");
@@ -2537,7 +2553,8 @@ public class HotelManagement extends Application {
                     post.setContentText("File: " + f.getAbsolutePath() +
                             (hasEmail ? "\nEmail on file: " + data.getGuestEmail() : "\n⚠ No email on file."));
                     post.getButtonTypes().setAll(hasEmail ? btnMail : btnCopy, btnCopy, btnClose);
-                    if (!hasEmail) post.getButtonTypes().remove(btnMail);
+                    if (!hasEmail)
+                        post.getButtonTypes().remove(btnMail);
 
                     Optional<ButtonType> res = post.showAndWait();
                     if (res.isPresent() && res.get() == btnMail && hasEmail) {
@@ -2545,11 +2562,11 @@ public class HotelManagement extends Application {
                         new Thread(() -> {
                             try {
                                 EmailSender.sendInvoice(email, data.getGuestName(), data.getRoomNumber(), f);
-                                javafx.application.Platform.runLater(() ->
-                                        showAlert(Alert.AlertType.INFORMATION, "Email Sent", "Invoice emailed to: " + email));
+                                javafx.application.Platform.runLater(() -> showAlert(Alert.AlertType.INFORMATION,
+                                        "Email Sent", "Invoice emailed to: " + email));
                             } catch (Exception ex) {
-                                javafx.application.Platform.runLater(() ->
-                                        showAlert(Alert.AlertType.WARNING, "Email Failed", ex.getMessage()));
+                                javafx.application.Platform.runLater(
+                                        () -> showAlert(Alert.AlertType.WARNING, "Email Failed", ex.getMessage()));
                             }
                         }).start();
                     } else if (res.isPresent() && res.get() == btnCopy) {
@@ -2558,8 +2575,11 @@ public class HotelManagement extends Application {
                         fc2.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
                         File f2 = fc2.showSaveDialog(null);
                         if (f2 != null) {
-                            try { generateInvoicePDF(f2, data, null, 0.0); }
-                            catch (Exception ex2) { showAlert(Alert.AlertType.ERROR, "Error", ex2.getMessage()); }
+                            try {
+                                generateInvoicePDF(f2, data, null, 0.0);
+                            } catch (Exception ex2) {
+                                showAlert(Alert.AlertType.ERROR, "Error", ex2.getMessage());
+                            }
                         }
                     }
                 });
@@ -2941,7 +2961,8 @@ public class HotelManagement extends Application {
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
 
-            // No longer deleting rooms. We rely on REPLACE INTO with primary key room_number.
+            // No longer deleting rooms. We rely on REPLACE INTO with primary key
+            // room_number.
 
             String insertRoom = "REPLACE INTO rooms (room_number, room_type, price, status, customer_name, contact_number, guest_email, guest_address, check_in_date, expected_checkout_date, aadhaar_image, checkout_time, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement pstmt = conn.prepareStatement(insertRoom)) {
@@ -3251,7 +3272,8 @@ public class HotelManagement extends Application {
     }
 
     public static class EmailSender {
-        // Prerequisite: tharunadithyan@gmail.com must have 2-Step Verification and an App Password.
+        // Prerequisite: tharunadithyan@gmail.com must have 2-Step Verification and an
+        // App Password.
         private static final String FROM_EMAIL = "tharunadithyan@gmail.com";
         private static final String APP_PASSWORD = "vkgi egxl gfke gyhw";
 
@@ -3289,7 +3311,8 @@ public class HotelManagement extends Application {
                         "  </div>\n" +
                         "  <div style=\"padding:20px;\">\n" +
                         "    <p>Dear <strong>" + guestName + "</strong>,</p>\n" +
-                        "    <p>Thank you for staying with us. Please find your invoice attached for Room <strong>" + roomNumber + "</strong>.</p>\n" +
+                        "    <p>Thank you for staying with us. Please find your invoice attached for Room <strong>"
+                        + roomNumber + "</strong>.</p>\n" +
                         "    <p>We look forward to welcoming you again.</p>\n" +
                         "    <p style=\"color:#c9a96e;font-weight:bold;\">\u2014 MIT Grand Regency Team</p>\n" +
                         "  </div>\n" +

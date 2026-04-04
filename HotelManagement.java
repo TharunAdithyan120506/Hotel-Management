@@ -59,6 +59,7 @@ import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import javafx.geometry.Insets;
@@ -288,7 +289,6 @@ public class HotelManagement extends Application {
         }
 
         public void setCheckingOut() {
-            this.customerName.set("");
             this.customerName.set("");
             this.contactNumber.set("");
             this.guestEmail.set("");
@@ -720,8 +720,92 @@ public class HotelManagement extends Application {
     // Track active nav button
     private Button activeNavButton = null;
 
+    private void ensureSchema() {
+        String[] statements = {
+            "CREATE TABLE IF NOT EXISTS settings (" +
+                "setting_key VARCHAR(50) PRIMARY KEY, setting_value VARCHAR(100))",
+
+            "CREATE TABLE IF NOT EXISTS rooms (" +
+                "room_number VARCHAR(10) PRIMARY KEY, room_type VARCHAR(20), price DOUBLE," +
+                "status VARCHAR(30) DEFAULT 'Available', customer_name VARCHAR(100)," +
+                "contact_number VARCHAR(20), guest_email VARCHAR(100), guest_address VARCHAR(255)," +
+                "check_in_date DATE, expected_checkout_date DATE, aadhaar_image LONGBLOB," +
+                "checkout_time VARCHAR(30), priority BOOLEAN DEFAULT FALSE)",
+
+            "CREATE TABLE IF NOT EXISTS checkout_history (" +
+                "id INT AUTO_INCREMENT PRIMARY KEY, room_number VARCHAR(10), room_type VARCHAR(20)," +
+                "guest_name VARCHAR(100), contact_number VARCHAR(20), guest_email VARCHAR(100)," +
+                "guest_address VARCHAR(255), check_in_date VARCHAR(20), checkout_date VARCHAR(20)," +
+                "price_per_night DOUBLE DEFAULT 0, nights INT DEFAULT 0, subtotal DOUBLE DEFAULT 0," +
+                "tax_amount DOUBLE DEFAULT 0, gst_rate DOUBLE DEFAULT 18, total_paid DOUBLE DEFAULT 0," +
+                "booked_at DATETIME, aadhaar_image LONGBLOB)",
+
+            "CREATE TABLE IF NOT EXISTS menu_items (" +
+                "item_code VARCHAR(20) PRIMARY KEY, item_name VARCHAR(100)," +
+                "category VARCHAR(50), unit_price DOUBLE)",
+
+            "CREATE TABLE IF NOT EXISTS restaurant_orders (" +
+                "id INT AUTO_INCREMENT PRIMARY KEY, room_number VARCHAR(10), guest_name VARCHAR(100)," +
+                "item_code VARCHAR(20), item_name VARCHAR(100), category VARCHAR(50)," +
+                "unit_price DOUBLE, quantity INT, total_price DOUBLE," +
+                "order_time DATETIME, settled BOOLEAN DEFAULT FALSE)",
+
+            // Safe ALTER — adds missing columns to existing tables without error
+            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS checkout_time VARCHAR(30)",
+            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS priority BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS room_type VARCHAR(20)",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS contact_number VARCHAR(20)",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS guest_email VARCHAR(100)",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS guest_address VARCHAR(255)",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS check_in_date VARCHAR(20)",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS price_per_night DOUBLE DEFAULT 0",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS nights INT DEFAULT 0",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS subtotal DOUBLE DEFAULT 0",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS tax_amount DOUBLE DEFAULT 0",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS gst_rate DOUBLE DEFAULT 18",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS aadhaar_image LONGBLOB",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS booked_at DATETIME"
+        };
+
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            for (String sql : statements) {
+                try {
+                    stmt.execute(sql);
+                } catch (SQLException e) {
+                    System.err.println("Schema warning (non-fatal): " + e.getMessage());
+                }
+            }
+            System.out.println("[DB] Schema verified OK.");
+        } catch (SQLException e) {
+            System.err.println("[DB] FATAL: Could not connect to database: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void resetAllData() {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute("TRUNCATE TABLE rooms");
+            stmt.execute("TRUNCATE TABLE checkout_history");
+            stmt.execute("TRUNCATE TABLE menu_items");
+            stmt.execute("TRUNCATE TABLE restaurant_orders");
+            stmt.execute("TRUNCATE TABLE settings");
+
+            roomList.clear();
+            historyList.clear();
+            menuItemList.clear();
+            restaurantOrderList.clear();
+
+            loadSettings();
+            System.out.println("Clean slate: All tables truncated and memory lists cleared.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public void start(Stage primaryStage) {
+        ensureSchema();
+        // resetAllData(); // CAUTION: Uncomment to do a clean slate rebuild, then comment out again
         loadSettings();
         loadData();
 
@@ -1752,114 +1836,146 @@ public class HotelManagement extends Application {
 
         btnOut.setOnAction(e -> {
             Room r = table.getSelectionModel().getSelectedItem();
-            if (r != null) {
-                long days = ChronoUnit.DAYS.between(r.getCheckInDate(), LocalDate.now());
-                if (days == 0) {
-                    days = 1;
+            if (r == null) return;
+
+            long days = ChronoUnit.DAYS.between(r.getCheckInDate(), LocalDate.now());
+            if (days == 0) days = 1;
+
+            double subtotal = days * r.getPrice();
+            double tax = subtotal * (gstRate / 100.0);
+            double resTotal = 0.0;
+            List<RestaurantOrder> settledNow = new ArrayList<>();
+            for (RestaurantOrder o : restaurantOrderList) {
+                if (o.getRoomNumber().equals(r.getRoomNumber()) && !o.isSettled()) {
+                    resTotal += o.getTotalPrice();
+                    settledNow.add(o);
                 }
-                double subtotal = days * r.getPrice();
-                double tax = subtotal * (gstRate / 100.0);
-                double resTotal = 0.0;
-                List<RestaurantOrder> settledNow = new ArrayList<>();
-                for (RestaurantOrder o : restaurantOrderList) {
-                    if (o.getRoomNumber().equals(r.getRoomNumber()) && !o.isSettled()) {
-                        resTotal += o.getTotalPrice();
-                        settledNow.add(o);
+            }
+            double grandTotal = subtotal + tax + resTotal;
+
+            HistoryRecord record = new HistoryRecord(
+                    r.getRoomNumber(), r.getRoomType(), r.getCustomerName(), r.getContactNumber(),
+                    r.getGuestEmail(), r.getGuestAddress(),
+                    r.getCheckInDate().toString(), LocalDate.now().toString(),
+                    r.getPrice(), days, subtotal, tax, gstRate, grandTotal,
+                    LocalDateTime.now(), r.getAadhaarImage());
+
+            // ── Step 1: Checkout Preview Dialog ──────────────────────────────────
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Checkout Confirmation");
+            dialog.setHeaderText("Checkout preview for Room " + r.getRoomNumber());
+
+            GridPane previewGrid = new GridPane();
+            previewGrid.setHgap(10);
+            previewGrid.setVgap(10);
+            previewGrid.setPadding(new Insets(20, 150, 10, 10));
+            previewGrid.add(new Label("Guest:"),         0, 0); previewGrid.add(new Label(record.getGuestName()), 1, 0);
+            previewGrid.add(new Label("Email:"),         0, 1); previewGrid.add(new Label(record.getGuestEmail() != null && !record.getGuestEmail().isEmpty() ? record.getGuestEmail() : "—"), 1, 1);
+            previewGrid.add(new Label("Check-In:"),      0, 2); previewGrid.add(new Label(record.getCheckInDate()), 1, 2);
+            previewGrid.add(new Label("Nights:"),        0, 3); previewGrid.add(new Label(String.valueOf(record.getNights())), 1, 3);
+            previewGrid.add(new Label("Room Subtotal:"), 0, 4); previewGrid.add(new Label(String.format("₹ %.2f", record.getSubtotal())), 1, 4);
+            previewGrid.add(new Label("GST (" + (int)gstRate + "%):"), 0, 5); previewGrid.add(new Label(String.format("₹ %.2f", record.getTaxAmount())), 1, 5);
+            previewGrid.add(new Label("Dining/POS:"),    0, 6); previewGrid.add(new Label(String.format("₹ %.2f", resTotal)), 1, 6);
+            Label totalLabel = new Label(String.format("₹ %.2f", record.getTotalPaid()));
+            totalLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+            previewGrid.add(new Label("Grand Total:"),   0, 7); previewGrid.add(totalLabel, 1, 7);
+
+            dialog.getDialogPane().setContent(previewGrid);
+            ButtonType btnConfirmPdf = new ButtonType("Confirm & Generate Invoice", ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(btnConfirmPdf, ButtonType.CANCEL);
+
+            Optional<ButtonType> result = dialog.showAndWait();
+            if (result.isEmpty() || result.get() != btnConfirmPdf) return;
+
+            // ── Step 2: Choose where to save the PDF ─────────────────────────────
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Save Invoice PDF");
+            fileChooser.setInitialFileName(String.format("Invoice_Room%s_%s.pdf",
+                    r.getRoomNumber(), r.getCustomerName().replaceAll("[^a-zA-Z0-9]", "")));
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
+            File file = fileChooser.showSaveDialog(btnOut.getScene().getWindow());
+            if (file == null) {
+                showAlert(Alert.AlertType.INFORMATION, "Cancelled", "Checkout cancelled \u2014 no file selected.");
+                return;
+            }
+
+            // ── Step 3: Generate PDF & commit checkout ────────────────────────────
+            try {
+                for (RestaurantOrder o : settledNow) o.settledProperty().set(true);
+                restaurantOrderList.removeAll(settledNow);
+
+                generateInvoicePDF(file, record, settledNow, resTotal);
+
+                historyList.add(record);
+                r.setCheckingOut();
+                table.refresh();
+                updateDashboardMetrics();
+                saveData();
+                saveRestaurantOrders();
+
+            } catch (Throwable ex) {
+                // Rollback settled orders on failure
+                for (RestaurantOrder o : settledNow) {
+                    o.settledProperty().set(false);
+                    restaurantOrderList.add(o);
+                }
+                showAlert(Alert.AlertType.ERROR, "Checkout Failed",
+                        "Could not complete checkout or generate PDF:\n" + ex.getMessage());
+                ex.printStackTrace();
+                return;
+            }
+
+            // ── Step 4: Post-checkout Action Dialog ──────────────────────────────
+            boolean hasEmail = record.getGuestEmail() != null && !record.getGuestEmail().isEmpty();
+
+            ButtonType btnSendEmail = new ButtonType("📧 Send Invoice via Email", ButtonBar.ButtonData.LEFT);
+            ButtonType btnSaveAnother = new ButtonType("🖨️ Save Another Copy", ButtonBar.ButtonData.OTHER);
+            ButtonType btnDone = new ButtonType("✔ Done", ButtonBar.ButtonData.OK_DONE);
+
+            Alert postDialog = new Alert(Alert.AlertType.INFORMATION);
+            postDialog.setTitle("Checkout Complete");
+            postDialog.setHeaderText("✅ Invoice saved successfully");
+            postDialog.setContentText("PDF saved to:\n" + file.getAbsolutePath() +
+                    (hasEmail ? "\n\nRegistered email: " + record.getGuestEmail() : "\n\n⚠ No email on file for this guest."));
+
+            if (hasEmail) {
+                postDialog.getButtonTypes().setAll(btnSendEmail, btnSaveAnother, btnDone);
+            } else {
+                postDialog.getButtonTypes().setAll(btnSaveAnother, btnDone);
+            }
+
+            Optional<ButtonType> postResult = postDialog.showAndWait();
+
+            if (postResult.isPresent() && postResult.get() == btnSendEmail) {
+                // ── Send email on background thread ──────────────────────────────
+                String guestEmail = record.getGuestEmail();
+                File invoiceFile = file;
+                new Thread(() -> {
+                    try {
+                        EmailSender.sendInvoice(guestEmail, record.getGuestName(), record.getRoomNumber(), invoiceFile);
+                        javafx.application.Platform.runLater(() ->
+                                showAlert(Alert.AlertType.INFORMATION, "Email Sent",
+                                        "Invoice successfully emailed to:\n" + guestEmail));
+                    } catch (Exception ex) {
+                        javafx.application.Platform.runLater(() ->
+                                showAlert(Alert.AlertType.WARNING, "Email Failed",
+                                        "Invoice was saved but the email could not be sent.\n\nReason: " + ex.getMessage()));
                     }
-                }
+                }).start();
 
-                double grandTotal = subtotal + tax + resTotal;
-
-                HistoryRecord record = new HistoryRecord(
-                        r.getRoomNumber(), r.getRoomType(), r.getCustomerName(), r.getContactNumber(),
-                        r.getGuestEmail(), r.getGuestAddress(),
-                        r.getCheckInDate().toString(), LocalDate.now().toString(),
-                        r.getPrice(), days, subtotal, tax, gstRate, grandTotal, LocalDateTime.now(),
-                        r.getAadhaarImage());
-
-                Dialog<ButtonType> dialog = new Dialog<>();
-                dialog.setTitle("Checkout Confirmation");
-                dialog.setHeaderText("Checkout preview for Room " + r.getRoomNumber());
-
-                GridPane previewGrid = new GridPane();
-                previewGrid.setHgap(10);
-                previewGrid.setVgap(10);
-                previewGrid.setPadding(new Insets(20, 150, 10, 10));
-
-                previewGrid.add(new Label("Guest:"), 0, 0);
-                previewGrid.add(new Label(record.getGuestName()), 1, 0);
-                previewGrid.add(new Label("Check-In:"), 0, 1);
-                previewGrid.add(new Label(record.getCheckInDate()), 1, 1);
-                previewGrid.add(new Label("Nights:"), 0, 2);
-                previewGrid.add(new Label(String.valueOf(record.getNights())), 1, 2);
-                previewGrid.add(new Label("Room Subtotal:"), 0, 3);
-                previewGrid.add(new Label(String.format("Rs. %.2f", record.getSubtotal())), 1, 3);
-                previewGrid.add(new Label("Room Tax:"), 0, 4);
-                previewGrid.add(new Label(String.format("Rs. %.2f", record.getTaxAmount())), 1, 4);
-                previewGrid.add(new Label("Dining/POS:"), 0, 5);
-                previewGrid.add(new Label(String.format("Rs. %.2f", resTotal)), 1, 5);
-                previewGrid.add(new Label("Total Paid:"), 0, 6);
-                previewGrid.add(new Label(String.format("Rs. %.2f", record.getTotalPaid())), 1, 6);
-
-                dialog.getDialogPane().setContent(previewGrid);
-                ButtonType btnConfirmPdf = new ButtonType("Confirm & Save PDF", ButtonBar.ButtonData.OK_DONE);
-                dialog.getDialogPane().getButtonTypes().addAll(btnConfirmPdf, ButtonType.CANCEL);
-
-                Optional<ButtonType> result = dialog.showAndWait();
-                if (result.isPresent() && result.get() == btnConfirmPdf) {
-                    FileChooser fileChooser = new FileChooser();
-                    fileChooser.setTitle("Save Invoice PDF");
-                    fileChooser.setInitialFileName(String.format("Invoice_Room%s_%s.pdf", r.getRoomNumber(),
-                            r.getCustomerName().replaceAll(" ", "")));
-                    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
-                    File file = fileChooser.showSaveDialog(btnOut.getScene().getWindow());
-
-                    if (file != null) {
-                        try {
-                            for (RestaurantOrder o : settledNow) {
-                                o.settledProperty().set(true);
-                            }
-
-                            restaurantOrderList.removeAll(settledNow);
-                            generateInvoicePDF(file, record, settledNow, resTotal);
-                            historyList.add(record);
-                            r.setCheckingOut();
-                            table.refresh();
-                            updateDashboardMetrics();
-                            saveData(); // Save to MySQL
-                            saveRestaurantOrders(); // Persist settled orders
-                            showAlert(Alert.AlertType.INFORMATION, "Checkout Complete",
-                                    "Invoice successfully saved to:\n" + file.getAbsolutePath());
-
-                            // Send Invoice async
-                            if (record.getGuestEmail() != null && !record.getGuestEmail().isEmpty()) {
-                                String email = record.getGuestEmail();
-                                new Thread(() -> {
-                                    try {
-                                        EmailSender.sendInvoice(email, record.getGuestName(), record.getRoomNumber(),
-                                                file);
-                                        javafx.application.Platform
-                                                .runLater(() -> showAlert(Alert.AlertType.INFORMATION, "Email Sent",
-                                                        "Invoice emailed to: " + email));
-                                    } catch (Exception ex) {
-                                        javafx.application.Platform.runLater(() -> showAlert(Alert.AlertType.WARNING,
-                                                "Email Failed",
-                                                "Invoice saved but email could not be sent: " + ex.getMessage()));
-                                    }
-                                }).start();
-                            }
-                        } catch (Throwable ex) {
-                            for (RestaurantOrder o : settledNow) {
-                                o.settledProperty().set(false);
-                            } // Rollback
-                            showAlert(Alert.AlertType.ERROR, "Checkout/PDF Generation Failed",
-                                    "Failed to complete checkout or construct the PDF:\n" + ex.getMessage() + "\n"
-                                            + ex.toString());
-                            ex.printStackTrace();
-                        }
-                    } else {
-                        showAlert(Alert.AlertType.INFORMATION, "Checkout Cancelled",
-                                "Checkout was cancelled because no PDF file was selected.");
+            } else if (postResult.isPresent() && postResult.get() == btnSaveAnother) {
+                // ── Save a second copy ────────────────────────────────────────────
+                FileChooser fc2 = new FileChooser();
+                fc2.setTitle("Save Another Copy");
+                fc2.setInitialFileName("Copy_" + file.getName());
+                fc2.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
+                File file2 = fc2.showSaveDialog(null);
+                if (file2 != null) {
+                    try {
+                        generateInvoicePDF(file2, record, settledNow, resTotal);
+                        showAlert(Alert.AlertType.INFORMATION, "Saved", "Copy saved to:\n" + file2.getAbsolutePath());
+                    } catch (Exception ex2) {
+                        showAlert(Alert.AlertType.ERROR, "Save Failed", ex2.getMessage());
                     }
                 }
             }
@@ -2307,6 +2423,9 @@ public class HotelManagement extends Application {
         VBox.setVgrow(table, Priority.ALWAYS);
 
         refreshHousekeepingPane = () -> {
+            cleaningData.setPredicate(null);
+            cleaningData.setPredicate(r -> "Cleaning".equals(r.getStatus()) || "Urgent Cleaning".equals(r.getStatus()));
+            table.refresh();
         };
 
         return root;
@@ -2395,41 +2514,52 @@ public class HotelManagement extends Application {
                 btn.setOnAction(e -> {
                     HistoryRecord data = getTableView().getItems().get(getIndex());
                     FileChooser fc = new FileChooser();
-                    fc.setInitialFileName("Reinvoice_Room" + data.getRoomNumber() + "_" + data.getGuestName() + "_"
-                            + data.getCheckOutDate() + ".pdf");
+                    fc.setInitialFileName("Reinvoice_Room" + data.getRoomNumber() + "_" + data.getGuestName() + ".pdf");
                     fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Documents", "*.pdf"));
                     File f = fc.showSaveDialog(null);
-                    if (f != null) {
-                        try {
-                            generateInvoicePDF(f, data, null, 0.0);
-                            showAlert(Alert.AlertType.INFORMATION, "PDF Saved",
-                                    "Re-invoice saved to:\n" + f.getAbsolutePath());
+                    if (f == null) return;
 
-                            // Re-send email
-                            if (data.getGuestEmail() != null && !data.getGuestEmail().isEmpty()) {
-                                String email = data.getGuestEmail();
-                                Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION);
-                                confirmAlert.setTitle("Send Email");
-                                confirmAlert.setHeaderText(null);
-                                confirmAlert.setContentText("Also send this invoice to " + email + "?");
-                                if (confirmAlert.showAndWait().orElse(null) == ButtonType.OK) {
-                                    new Thread(() -> {
-                                        try {
-                                            EmailSender.sendInvoice(email, data.getGuestName(), data.getRoomNumber(),
-                                                    f);
-                                            javafx.application.Platform
-                                                    .runLater(() -> showAlert(Alert.AlertType.INFORMATION, "Email Sent",
-                                                            "Invoice emailed to: " + email));
-                                        } catch (Exception ex) {
-                                            javafx.application.Platform.runLater(() -> showAlert(
-                                                    Alert.AlertType.WARNING, "Email Failed",
-                                                    "Invoice saved but email could not be sent: " + ex.getMessage()));
-                                        }
-                                    }).start();
-                                }
+                    try {
+                        generateInvoicePDF(f, data, null, 0.0);
+                    } catch (Exception ex) {
+                        showAlert(Alert.AlertType.ERROR, "PDF Error", ex.getMessage());
+                        return;
+                    }
+
+                    boolean hasEmail = data.getGuestEmail() != null && !data.getGuestEmail().isEmpty();
+                    ButtonType btnMail    = new ButtonType("📧 Send via Email", ButtonBar.ButtonData.LEFT);
+                    ButtonType btnCopy    = new ButtonType("🖨️ Save Another Copy", ButtonBar.ButtonData.OTHER);
+                    ButtonType btnClose   = new ButtonType("Done", ButtonBar.ButtonData.OK_DONE);
+
+                    Alert post = new Alert(Alert.AlertType.INFORMATION);
+                    post.setTitle("Invoice Saved");
+                    post.setHeaderText("Re-invoice saved for " + data.getGuestName());
+                    post.setContentText("File: " + f.getAbsolutePath() +
+                            (hasEmail ? "\nEmail on file: " + data.getGuestEmail() : "\n⚠ No email on file."));
+                    post.getButtonTypes().setAll(hasEmail ? btnMail : btnCopy, btnCopy, btnClose);
+                    if (!hasEmail) post.getButtonTypes().remove(btnMail);
+
+                    Optional<ButtonType> res = post.showAndWait();
+                    if (res.isPresent() && res.get() == btnMail && hasEmail) {
+                        String email = data.getGuestEmail();
+                        new Thread(() -> {
+                            try {
+                                EmailSender.sendInvoice(email, data.getGuestName(), data.getRoomNumber(), f);
+                                javafx.application.Platform.runLater(() ->
+                                        showAlert(Alert.AlertType.INFORMATION, "Email Sent", "Invoice emailed to: " + email));
+                            } catch (Exception ex) {
+                                javafx.application.Platform.runLater(() ->
+                                        showAlert(Alert.AlertType.WARNING, "Email Failed", ex.getMessage()));
                             }
-                        } catch (Exception ex) {
-                            showAlert(Alert.AlertType.ERROR, "PDF Error", ex.getMessage());
+                        }).start();
+                    } else if (res.isPresent() && res.get() == btnCopy) {
+                        FileChooser fc2 = new FileChooser();
+                        fc2.setInitialFileName("Copy_" + f.getName());
+                        fc2.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
+                        File f2 = fc2.showSaveDialog(null);
+                        if (f2 != null) {
+                            try { generateInvoicePDF(f2, data, null, 0.0); }
+                            catch (Exception ex2) { showAlert(Alert.AlertType.ERROR, "Error", ex2.getMessage()); }
                         }
                     }
                 });
@@ -2811,9 +2941,7 @@ public class HotelManagement extends Application {
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
 
-            try (Statement clearRooms = conn.createStatement()) {
-                clearRooms.executeUpdate("DELETE FROM rooms");
-            }
+            // No longer deleting rooms. We rely on REPLACE INTO with primary key room_number.
 
             String insertRoom = "REPLACE INTO rooms (room_number, room_type, price, status, customer_name, contact_number, guest_email, guest_address, check_in_date, expected_checkout_date, aadhaar_image, checkout_time, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement pstmt = conn.prepareStatement(insertRoom)) {
@@ -3123,14 +3251,13 @@ public class HotelManagement extends Application {
     }
 
     public static class EmailSender {
-        private static final String FROM_EMAIL = "[tharunadithyan@gmail.com]";
+        // Prerequisite: tharunadithyan@gmail.com must have 2-Step Verification and an App Password.
+        private static final String FROM_EMAIL = "tharunadithyan@gmail.com";
         private static final String APP_PASSWORD = "vkgi egxl gfke gyhw";
 
         public static void sendInvoice(String toEmail, String guestName, String roomNumber, File pdfFile)
                 throws Exception {
-            System.out.println("[EmailSender] Attempting to send to: " + toEmail);
-            System.out.println("[EmailSender] PDF file exists: " + (pdfFile != null && pdfFile.exists()) + ", size: "
-                    + (pdfFile != null ? pdfFile.length() : 0));
+            System.out.println("[EmailSender] Attempting to connect to SMTP servers for: " + toEmail);
 
             Properties prop = new Properties();
             prop.put("mail.smtp.auth", "true");
@@ -3138,9 +3265,8 @@ public class HotelManagement extends Application {
             prop.put("mail.smtp.host", "smtp.gmail.com");
             prop.put("mail.smtp.port", "587");
             prop.put("mail.smtp.ssl.trust", "smtp.gmail.com");
-            prop.put("mail.smtp.ssl.protocols", "TLSv1.2");
-            prop.put("mail.smtp.connectiontimeout", "10000");
-            prop.put("mail.smtp.timeout", "10000");
+            prop.put("mail.smtp.connectiontimeout", "15000");
+            prop.put("mail.smtp.timeout", "15000");
 
             Session session = Session.getInstance(prop, new Authenticator() {
                 @Override
@@ -3149,60 +3275,49 @@ public class HotelManagement extends Application {
                 }
             });
 
-            // Bypass JAF dependency completely by constructing the raw MIME bytestream
-            // natively
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            PrintWriter writer = new PrintWriter(new OutputStreamWriter(baos, "UTF-8"));
-
-            String htmlBody = "<div style=\"font-family:Georgia,serif;color:#1a1a2e;max-width:600px;\">\n" +
-                    "  <div style=\"background:#c9a96e;padding:20px;\">\n" +
-                    "    <h1 style=\"color:white;margin:0;\">MIT Grand Regency</h1>\n" +
-                    "    <p style=\"color:white;margin:0;font-size:12px;\">Luxury Hospitality Management</p>\n" +
-                    "  </div>\n" +
-                    "  <div style=\"padding:20px;\">\n" +
-                    "    <p>Dear <strong>" + guestName + "</strong>,</p>\n" +
-                    "    <p>Thank you for staying with us. Please find your invoice attached for Room <strong>"
-                    + roomNumber + "</strong>.</p>\n" +
-                    "    <p>We look forward to welcoming you again.</p>\n" +
-                    "    <p style=\"color:#c9a96e;font-weight:bold;\">\u2014 MIT Grand Regency Team</p>\n" +
-                    "  </div>\n" +
-                    "</div>";
-
-            writer.print("From: " + FROM_EMAIL + "\r\n");
-            writer.print("To: " + toEmail + "\r\n");
-            writer.print("Subject: Your Invoice \u2014 MIT Grand Regency, Room " + roomNumber + "\r\n");
-            writer.print("MIME-Version: 1.0\r\n");
-            String boundary = "=_Part_" + System.currentTimeMillis();
-            writer.print("Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\n");
-            writer.print("\r\n");
-
-            writer.print("--" + boundary + "\r\n");
-            writer.print("Content-Type: text/html; charset=utf-8\r\n");
-            writer.print("Content-Transfer-Encoding: 7bit\r\n\r\n");
-            writer.print(htmlBody + "\r\n\r\n");
-
-            if (pdfFile != null && pdfFile.exists()) {
-                writer.print("--" + boundary + "\r\n");
-                writer.print("Content-Type: application/pdf; name=\"" + pdfFile.getName() + "\"\r\n");
-                writer.print("Content-Transfer-Encoding: base64\r\n");
-                writer.print("Content-Disposition: attachment; filename=\"" + pdfFile.getName() + "\"\r\n\r\n");
-                writer.flush();
-
-                byte[] fileBytes = Files.readAllBytes(pdfFile.toPath());
-                String b64 = java.util.Base64.getEncoder().encodeToString(fileBytes);
-                String formattedB64 = b64.replaceAll("(.{76})", "$1\r\n");
-                writer.print(formattedB64 + "\r\n");
-            }
-
-            writer.print("--" + boundary + "--\r\n");
-            writer.flush();
-
-            MimeMessage message = new MimeMessage(session, new ByteArrayInputStream(baos.toByteArray()));
             try {
+                System.out.println("[EmailSender] Authenticating and assembling MIME message...");
+                MimeMessage message = new MimeMessage(session);
+                message.setFrom(new InternetAddress(FROM_EMAIL));
+                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail));
+                message.setSubject("Your Invoice \u2014 MIT Grand Regency, Room " + roomNumber);
+
+                String htmlBody = "<div style=\"font-family:Georgia,serif;color:#1a1a2e;max-width:600px;\">\n" +
+                        "  <div style=\"background:#c9a96e;padding:20px;\">\n" +
+                        "    <h1 style=\"color:white;margin:0;\">MIT Grand Regency</h1>\n" +
+                        "    <p style=\"color:white;margin:0;font-size:12px;\">Luxury Hospitality Management</p>\n" +
+                        "  </div>\n" +
+                        "  <div style=\"padding:20px;\">\n" +
+                        "    <p>Dear <strong>" + guestName + "</strong>,</p>\n" +
+                        "    <p>Thank you for staying with us. Please find your invoice attached for Room <strong>" + roomNumber + "</strong>.</p>\n" +
+                        "    <p>We look forward to welcoming you again.</p>\n" +
+                        "    <p style=\"color:#c9a96e;font-weight:bold;\">\u2014 MIT Grand Regency Team</p>\n" +
+                        "  </div>\n" +
+                        "</div>";
+
+                MimeBodyPart htmlPart = new MimeBodyPart();
+                htmlPart.setContent(htmlBody, "text/html; charset=utf-8");
+
+                Multipart mp = new MimeMultipart();
+                mp.addBodyPart(htmlPart);
+
+                if (pdfFile != null && pdfFile.exists()) {
+                    System.out.println("[EmailSender] Attaching PDF Invoice. Size: " + pdfFile.length() + " bytes");
+                    MimeBodyPart attachPart = new MimeBodyPart();
+                    attachPart.attachFile(pdfFile);
+                    attachPart.setFileName("Invoice_Room" + roomNumber + ".pdf");
+                    mp.addBodyPart(attachPart);
+                }
+
+                message.setContent(mp);
+
+                System.out.println("[EmailSender] Transport.send() triggered...");
                 Transport.send(message);
                 System.out.println("[EmailSender] Email sent successfully to: " + toEmail);
+
             } catch (Exception ex) {
                 System.err.println("[EmailSender] FAILED: " + ex.getMessage());
+                ex.printStackTrace();
                 throw new RuntimeException("SMTP send failed: " + ex.getMessage(), ex);
             }
         }

@@ -692,7 +692,8 @@ public class HotelManagement extends Application {
     }
 
     // --- State ---
-    private final ObservableList<Room> roomList = FXCollections.observableArrayList(r -> new javafx.beans.Observable[]{r.statusProperty(), r.priorityProperty()});
+    private final ObservableList<Room> roomList = FXCollections
+            .observableArrayList(r -> new javafx.beans.Observable[] { r.statusProperty(), r.priorityProperty() });
     private final ObservableList<HistoryRecord> historyList = FXCollections.observableArrayList();
     private final ObservableList<MenuItem> menuItemList = FXCollections.observableArrayList();
     private final ObservableList<RestaurantOrder> restaurantOrderList = FXCollections.observableArrayList();
@@ -1048,8 +1049,9 @@ public class HotelManagement extends Application {
             Label guestLabel = new Label("\u263A \u2014");
             guestLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #aaa;");
             Label availBadge = new Label("Available");
-            availBadge.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 3 8; -fx-background-radius: 10;");
-            
+            availBadge.setStyle(
+                    "-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 3 8; -fx-background-radius: 10;");
+
             tile.getChildren().addAll(topAccent, roomNo, roomType, rateLabel, guestLabel, availBadge);
 
         } else if ("Occupied".equals(room.getStatus())) {
@@ -1058,17 +1060,19 @@ public class HotelManagement extends Application {
             guestLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #555;");
             Label contactLabel = new Label("\u260E " + room.getContactNumber());
             contactLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #888;");
-            
-            String checkoutStr = room.getExpectedCheckOutDate() != null ? room.getExpectedCheckOutDate().toString() : "N/A";
+
+            String checkoutStr = room.getExpectedCheckOutDate() != null ? room.getExpectedCheckOutDate().toString()
+                    : "N/A";
             Label checkoutLabel = new Label("Checkout: " + checkoutStr);
             checkoutLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #888;");
-            
+
             String daysText = "";
             if (room.getExpectedCheckOutDate() != null) {
                 long daysLeft = ChronoUnit.DAYS.between(LocalDate.now(), room.getExpectedCheckOutDate());
                 if (daysLeft <= 0) {
                     daysText = "OVERDUE";
-                    checkoutLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " + DANGER_RED + "; -fx-font-weight: bold;");
+                    checkoutLabel
+                            .setStyle("-fx-font-size: 11px; -fx-text-fill: " + DANGER_RED + "; -fx-font-weight: bold;");
                 } else if (daysLeft == 1) {
                     daysText = "1 day left";
                 } else {
@@ -1077,7 +1081,7 @@ public class HotelManagement extends Application {
             }
             Label daysLabel = new Label(daysText);
             daysLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: " + GOLD_ACCENT + "; -fx-font-weight: bold;");
-            
+
             tile.getChildren().addAll(topAccent, roomNo, roomType, guestLabel, contactLabel, checkoutLabel, daysLabel);
 
             if (room.getAadhaarImage() != null) {
@@ -1091,7 +1095,7 @@ public class HotelManagement extends Application {
                 thumbBox.setAlignment(Pos.CENTER_LEFT);
                 tile.getChildren().add(thumbBox);
             }
-            
+
         } else if ("Cleaning".equals(room.getStatus())) {
             topAccent.setStyle("-fx-background-color: #f39c12; -fx-background-radius: 3 3 0 0;");
             Label cleanLabel = new Label("Being Cleaned");
@@ -1101,7 +1105,8 @@ public class HotelManagement extends Application {
         } else if ("Urgent Cleaning".equals(room.getStatus())) {
             topAccent.setStyle("-fx-background-color: #e74c3c; -fx-background-radius: 3 3 0 0;");
             Label urgentLabel = new Label("⚠ URGENT");
-            urgentLabel.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 3 8; -fx-background-radius: 10;");
+            urgentLabel.setStyle(
+                    "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 3 8; -fx-background-radius: 10;");
             tile.getChildren().addAll(topAccent, roomNo, roomType, urgentLabel);
         } else {
             topAccent.setStyle("-fx-background-color: #aaaaaa; -fx-background-radius: 3 3 0 0;");
@@ -1110,7 +1115,8 @@ public class HotelManagement extends Application {
 
         tile.setPadding(new Insets(0, 14, 12, 14));
         tile.setPrefWidth(195);
-        tile.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 10, 0.0, 0, 3);");
+        tile.setStyle(
+                "-fx-background-color: white; -fx-background-radius: 10; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 10, 0.0, 0, 3);");
         return tile;
     }
 
@@ -1124,9 +1130,11 @@ public class HotelManagement extends Application {
         if ("All".equals(filter)) {
             filteredRooms = new ArrayList<>(roomList);
         } else if ("Urgent".equals(filter)) {
-            filteredRooms = roomList.stream().filter(r -> "Urgent Cleaning".equals(r.getStatus())).collect(java.util.stream.Collectors.toList());
+            filteredRooms = roomList.stream().filter(r -> "Urgent Cleaning".equals(r.getStatus()))
+                    .collect(java.util.stream.Collectors.toList());
         } else {
-            filteredRooms = roomList.stream().filter(r -> filter.equals(r.getStatus())).collect(java.util.stream.Collectors.toList());
+            filteredRooms = roomList.stream().filter(r -> filter.equals(r.getStatus()))
+                    .collect(java.util.stream.Collectors.toList());
         }
 
         if (filteredRooms.isEmpty()) {
@@ -1188,26 +1196,32 @@ public class HotelManagement extends Application {
         HBox filterBar = new HBox(8);
         filterBar.setAlignment(Pos.CENTER_LEFT);
         ToggleGroup filterGroup = new ToggleGroup();
-        String[] filters = {"All", "Available", "Occupied", "Cleaning", "Urgent"};
+        String[] filters = { "All", "Available", "Occupied", "Cleaning", "Urgent" };
         for (String f : filters) {
             ToggleButton tb = new ToggleButton(f);
             tb.setToggleGroup(filterGroup);
-            tb.setStyle("-fx-background-color: transparent; -fx-border-color: #ccc; -fx-border-radius: 15; -fx-background-radius: 15; -fx-text-fill: #555; -fx-font-weight: bold; -fx-padding: 4 12;");
-            
+            tb.setStyle(
+                    "-fx-background-color: transparent; -fx-border-color: #ccc; -fx-border-radius: 15; -fx-background-radius: 15; -fx-text-fill: #555; -fx-font-weight: bold; -fx-padding: 4 12;");
+
             tb.selectedProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal) {
-                    tb.setStyle("-fx-background-color: " + GOLD_ACCENT + "; -fx-border-color: " + GOLD_ACCENT + "; -fx-border-radius: 15; -fx-background-radius: 15; -fx-text-fill: " + DARK_TEXT + "; -fx-font-weight: bold; -fx-padding: 4 12;");
+                    tb.setStyle("-fx-background-color: " + GOLD_ACCENT + "; -fx-border-color: " + GOLD_ACCENT
+                            + "; -fx-border-radius: 15; -fx-background-radius: 15; -fx-text-fill: " + DARK_TEXT
+                            + "; -fx-font-weight: bold; -fx-padding: 4 12;");
                     refreshActivityCenter(f);
                 } else {
-                    tb.setStyle("-fx-background-color: transparent; -fx-border-color: #ccc; -fx-border-radius: 15; -fx-background-radius: 15; -fx-text-fill: #555; -fx-font-weight: bold; -fx-padding: 4 12;");
+                    tb.setStyle(
+                            "-fx-background-color: transparent; -fx-border-color: #ccc; -fx-border-radius: 15; -fx-background-radius: 15; -fx-text-fill: #555; -fx-font-weight: bold; -fx-padding: 4 12;");
                 }
             });
-            if ("All".equals(f)) tb.setSelected(true);
+            if ("All".equals(f))
+                tb.setSelected(true);
             filterBar.getChildren().add(tb);
         }
-        
+
         filterGroup.selectedToggleProperty().addListener((obs, oldToggle, newToggle) -> {
-            if (newToggle == null) oldToggle.setSelected(true);
+            if (newToggle == null)
+                oldToggle.setSelected(true);
         });
 
         VBox actHeaderAndFilterBox = new VBox(10, actHeaderBox, filterBar);
@@ -1447,19 +1461,23 @@ public class HotelManagement extends Application {
         spinDays.setStyle("-fx-font-size: 13px;");
 
         Button btnBook = new Button("✔ Book Room");
-        btnBook.setStyle("-fx-background-color: #c9a96e; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
+        btnBook.setStyle(
+                "-fx-background-color: #c9a96e; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
         btnBook.setMaxWidth(Double.MAX_VALUE);
 
         Button btnOut = new Button("✗ Checkout");
-        btnOut.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
+        btnOut.setStyle(
+                "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
         btnOut.setMaxWidth(Double.MAX_VALUE);
 
         Button btnExt = new Button("⏱ Extend Stay");
-        btnExt.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
+        btnExt.setStyle(
+                "-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
         btnExt.setMaxWidth(Double.MAX_VALUE);
 
         Button btnUrgent = new Button("⚠ Mark Urgent");
-        btnUrgent.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
+        btnUrgent.setStyle(
+                "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-font-size: 13px; -fx-background-radius: 6;");
         btnUrgent.setMaxWidth(Double.MAX_VALUE);
 
         btnUrgent.setOnAction(e -> {
@@ -1585,10 +1603,14 @@ public class HotelManagement extends Application {
 
         Consumer<Room> updateActionForm = sel -> {
             boolean noRoom = (sel == null);
-            btnBook.setVisible(false); btnBook.setManaged(false);
-            btnExt.setVisible(false); btnExt.setManaged(false);
-            btnOut.setVisible(false); btnOut.setManaged(false);
-            btnUrgent.setVisible(false); btnUrgent.setManaged(false);
+            btnBook.setVisible(false);
+            btnBook.setManaged(false);
+            btnExt.setVisible(false);
+            btnExt.setManaged(false);
+            btnOut.setVisible(false);
+            btnOut.setManaged(false);
+            btnUrgent.setVisible(false);
+            btnUrgent.setManaged(false);
 
             if (noRoom) {
                 txtCust.clear();
@@ -1601,7 +1623,8 @@ public class HotelManagement extends Application {
             }
 
             if ("Available".equals(sel.getStatus())) {
-                btnBook.setVisible(true); btnBook.setManaged(true);
+                btnBook.setVisible(true);
+                btnBook.setManaged(true);
                 txtCust.clear();
                 txtCont.clear();
                 txtEmail.clear();
@@ -1616,9 +1639,11 @@ public class HotelManagement extends Application {
                 btnUpload.setDisable(false);
 
             } else if ("Occupied".equals(sel.getStatus())) {
-                btnExt.setVisible(true); btnExt.setManaged(true);
-                btnOut.setVisible(true); btnOut.setManaged(true);
-                
+                btnExt.setVisible(true);
+                btnExt.setManaged(true);
+                btnOut.setVisible(true);
+                btnOut.setManaged(true);
+
                 txtCust.setText(sel.getCustomerName() != null ? sel.getCustomerName() : "");
                 txtCont.setText(sel.getContactNumber() != null ? sel.getContactNumber() : "");
                 txtEmail.setText(sel.getGuestEmail() != null ? sel.getGuestEmail() : "");
@@ -1638,7 +1663,8 @@ public class HotelManagement extends Application {
                 btnUpload.setDisable(true);
 
             } else if ("Cleaning".equals(sel.getStatus()) || "Urgent Cleaning".equals(sel.getStatus())) {
-                btnUrgent.setVisible(true); btnUrgent.setManaged(true);
+                btnUrgent.setVisible(true);
+                btnUrgent.setManaged(true);
                 if ("Urgent Cleaning".equals(sel.getStatus())) {
                     btnUrgent.setText("⚠ Already Urgent");
                     btnUrgent.setDisable(true);
@@ -1646,7 +1672,7 @@ public class HotelManagement extends Application {
                     btnUrgent.setText("⚠ Mark Urgent");
                     btnUrgent.setDisable(false);
                 }
-                
+
                 txtCust.clear();
                 txtCont.clear();
                 txtEmail.clear();
@@ -1663,10 +1689,14 @@ public class HotelManagement extends Application {
             }
         };
         // Set initial state — all hidden until a room is selected
-        btnBook.setVisible(false); btnBook.setManaged(false);
-        btnExt.setVisible(false); btnExt.setManaged(false);
-        btnOut.setVisible(false); btnOut.setManaged(false);
-        btnUrgent.setVisible(false); btnUrgent.setManaged(false);
+        btnBook.setVisible(false);
+        btnBook.setManaged(false);
+        btnExt.setVisible(false);
+        btnExt.setManaged(false);
+        btnOut.setVisible(false);
+        btnOut.setManaged(false);
+        btnUrgent.setVisible(false);
+        btnUrgent.setManaged(false);
 
         table.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
             updateActionForm.accept(sel);
@@ -1907,21 +1937,30 @@ public class HotelManagement extends Application {
                 try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(file))) {
                     String line = br.readLine(); // skip header
                     while ((line = br.readLine()) != null) {
-                        if (line.trim().isEmpty()) continue;
+                        if (line.trim().isEmpty())
+                            continue;
                         String[] parts = line.split(",", -1);
-                        if (parts.length < 1) { skipped++; continue; }
+                        if (parts.length < 1) {
+                            skipped++;
+                            continue;
+                        }
                         String rn = parts[0].trim();
                         if (rn.isEmpty() || roomList.stream().anyMatch(r -> r.getRoomNumber().equals(rn))) {
-                            skipped++; continue;
+                            skipped++;
+                            continue;
                         }
                         String rt = parts.length > 1 ? parts[1].trim() : "";
                         if (!"Single".equals(rt) && !"Double".equals(rt) && !"Deluxe".equals(rt)) {
                             System.err.println("Warning: Invalid room type '" + rt + "'");
-                            skipped++; continue;
+                            skipped++;
+                            continue;
                         }
                         double p = 0;
                         if (parts.length > 2 && !parts[2].trim().isEmpty()) {
-                            try { p = Double.parseDouble(parts[2].trim()); } catch(NumberFormatException ex) {}
+                            try {
+                                p = Double.parseDouble(parts[2].trim());
+                            } catch (NumberFormatException ex) {
+                            }
                         }
                         if (p <= 0) {
                             p = rt.equals("Single") ? priceSingle : (rt.equals("Double") ? priceDouble : priceDeluxe);
@@ -1930,7 +1969,7 @@ public class HotelManagement extends Application {
                         if (!"Available".equals(st) && !"Occupied".equals(st)) {
                             st = "Available";
                         }
-                        
+
                         Room newRoom = new Room(rn, rt, p);
                         newRoom.setStatus(st);
                         roomList.add(newRoom);
@@ -1938,9 +1977,11 @@ public class HotelManagement extends Application {
                     }
                     updateDashboardMetrics();
                     saveData();
-                    showAlert(Alert.AlertType.INFORMATION, "Import Complete", "Import Complete — " + added + " rooms added, " + skipped + " rows skipped.");
+                    showAlert(Alert.AlertType.INFORMATION, "Import Complete",
+                            "Import Complete — " + added + " rooms added, " + skipped + " rows skipped.");
                 } catch (java.io.IOException ex) {
-                    showAlert(Alert.AlertType.ERROR, "Import Error", "Failed to read file. Please ensure it is a valid UTF-8 CSV.");
+                    showAlert(Alert.AlertType.ERROR, "Import Error",
+                            "Failed to read file. Please ensure it is a valid UTF-8 CSV.");
                 }
             }
         });
@@ -2111,42 +2152,60 @@ public class HotelManagement extends Application {
                 try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(file))) {
                     String line = br.readLine();
                     while ((line = br.readLine()) != null) {
-                        if (line.trim().isEmpty()) continue;
+                        if (line.trim().isEmpty())
+                            continue;
                         String[] parts = line.split(",", -1);
-                        if (parts.length < 1 || parts[0].trim().isEmpty()) { skipped++; continue; }
+                        if (parts.length < 1 || parts[0].trim().isEmpty()) {
+                            skipped++;
+                            continue;
+                        }
                         String itemName = parts[0].trim();
                         if (menuItemList.stream().anyMatch(m -> m.getItemName().equals(itemName))) {
-                            skipped++; continue;
+                            skipped++;
+                            continue;
                         }
                         String category = parts.length > 1 ? parts[1].trim() : "";
-                        if (!"Starter".equals(category) && !"Main Course".equals(category) && !"Dessert".equals(category) && !"Beverage".equals(category)) {
+                        if (!"Starter".equals(category) && !"Main Course".equals(category)
+                                && !"Dessert".equals(category) && !"Beverage".equals(category)) {
                             category = "Main Course";
                         }
                         double price = 0;
                         try {
-                            if (parts.length > 2) price = Double.parseDouble(parts[2].trim());
-                        } catch (NumberFormatException ex) { price = -1; }
-                        if (price <= 0) { skipped++; continue; }
-                        
+                            if (parts.length > 2)
+                                price = Double.parseDouble(parts[2].trim());
+                        } catch (NumberFormatException ex) {
+                            price = -1;
+                        }
+                        if (price <= 0) {
+                            skipped++;
+                            continue;
+                        }
+
                         boolean available = true;
                         if (parts.length > 3) {
                             String av = parts[3].trim().toLowerCase();
-                            if(av.equals("false")) available = false;
+                            if (av.equals("false"))
+                                available = false;
                         }
-                        if (!available) { skipped++; continue; }
-                        
+                        if (!available) {
+                            skipped++;
+                            continue;
+                        }
+
                         String newCode = "M" + (menuItemList.size() + 101);
                         menuItemList.add(new MenuItem(newCode, itemName, category, price));
                         added++;
                     }
                     saveMenuItems();
-                    showAlert(Alert.AlertType.INFORMATION, "Import Complete", "Menu Import Complete — " + added + " items added, " + skipped + " rows skipped.");
+                    showAlert(Alert.AlertType.INFORMATION, "Import Complete",
+                            "Menu Import Complete — " + added + " items added, " + skipped + " rows skipped.");
                 } catch (java.io.IOException ex) {
-                    showAlert(Alert.AlertType.ERROR, "Import Error", "Failed to read menu file. Please ensure it is a valid UTF-8 CSV.");
+                    showAlert(Alert.AlertType.ERROR, "Import Error",
+                            "Failed to read menu file. Please ensure it is a valid UTF-8 CSV.");
                 }
             }
         });
-        
+
         HBox menuHeader = new HBox(15, new Label("Menu"), btnImportMenu);
         menuHeader.setAlignment(Pos.CENTER_LEFT);
 
@@ -2167,9 +2226,8 @@ public class HotelManagement extends Application {
         TableView<Room> table = new TableView<>();
         styleTable(table);
 
-        FilteredList<Room> cleaningData = new FilteredList<>(roomList, r ->
-                "Cleaning".equals(r.getStatus()) || "Urgent Cleaning".equals(r.getStatus())
-        );
+        FilteredList<Room> cleaningData = new FilteredList<>(roomList,
+                r -> "Cleaning".equals(r.getStatus()) || "Urgent Cleaning".equals(r.getStatus()));
         table.setItems(cleaningData);
 
         TableColumn<Room, String> cRoom = new TableColumn<>("Room #");
@@ -2190,9 +2248,11 @@ public class HotelManagement extends Application {
                 } else {
                     Label badge = new Label("Urgent Cleaning".equals(item) ? "🔴 URGENT" : "Cleaning");
                     if ("Urgent Cleaning".equals(item)) {
-                        badge.setStyle("-fx-background-color: #fdecea; -fx-text-fill: #c0392b; -fx-font-weight: bold; -fx-padding: 3 10; -fx-background-radius: 10;");
+                        badge.setStyle(
+                                "-fx-background-color: #fdecea; -fx-text-fill: #c0392b; -fx-font-weight: bold; -fx-padding: 3 10; -fx-background-radius: 10;");
                     } else {
-                        badge.setStyle("-fx-background-color: #fff3cd; -fx-text-fill: #856404; -fx-font-weight: bold; -fx-padding: 3 10; -fx-background-radius: 10;");
+                        badge.setStyle(
+                                "-fx-background-color: #fff3cd; -fx-text-fill: #856404; -fx-font-weight: bold; -fx-padding: 3 10; -fx-background-radius: 10;");
                     }
                     setGraphic(badge);
                 }
@@ -2203,7 +2263,8 @@ public class HotelManagement extends Application {
         cAction.setCellFactory(tc -> new TableCell<Room, Void>() {
             private final Button btnClean = new Button("Mark as Available");
             {
-                btnClean.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 5 10; -fx-background-radius: 6;");
+                btnClean.setStyle(
+                        "-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 5 10; -fx-background-radius: 6;");
                 btnClean.setOnAction(e -> {
                     Room r = getTableView().getItems().get(getIndex());
                     r.setStatus("Available");
@@ -2212,11 +2273,14 @@ public class HotelManagement extends Application {
                     saveData();
                 });
             }
+
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty) setGraphic(null);
-                else setGraphic(btnClean);
+                if (empty)
+                    setGraphic(null);
+                else
+                    setGraphic(btnClean);
             }
         });
 
@@ -2237,11 +2301,13 @@ public class HotelManagement extends Application {
             }
         });
 
-        VBox root = new VBox(20, createSectionHeader("Housekeeping", "Manage room cleaning states post-checkout"), table);
+        VBox root = new VBox(20, createSectionHeader("Housekeeping", "Manage room cleaning states post-checkout"),
+                table);
         root.setPadding(new Insets(30));
         VBox.setVgrow(table, Priority.ALWAYS);
 
-        refreshHousekeepingPane = () -> { };
+        refreshHousekeepingPane = () -> {
+        };
 
         return root;
     }
@@ -2709,8 +2775,10 @@ public class HotelManagement extends Application {
             ResultSet rsOrders = stmt.executeQuery("SELECT * FROM restaurant_orders");
             while (rsOrders.next()) {
                 String roomNum = rsOrders.getString("room_number");
-                boolean isOccupied = roomList.stream().anyMatch(r -> r.getRoomNumber().equals(roomNum) && "Occupied".equals(r.getStatus()));
-                if (!isOccupied) continue;
+                boolean isOccupied = roomList.stream()
+                        .anyMatch(r -> r.getRoomNumber().equals(roomNum) && "Occupied".equals(r.getStatus()));
+                if (!isOccupied)
+                    continue;
 
                 Timestamp tsOrder = rsOrders.getTimestamp("order_time");
                 LocalDateTime tOrder = tsOrder != null ? tsOrder.toLocalDateTime() : LocalDateTime.now();
@@ -2734,7 +2802,8 @@ public class HotelManagement extends Application {
     }
 
     private void saveData() {
-        boolean removedOrders = restaurantOrderList.removeIf(o -> roomList.stream().anyMatch(r -> r.getRoomNumber().equals(o.getRoomNumber()) && "Available".equals(r.getStatus())));
+        boolean removedOrders = restaurantOrderList.removeIf(o -> roomList.stream()
+                .anyMatch(r -> r.getRoomNumber().equals(o.getRoomNumber()) && "Available".equals(r.getStatus())));
         if (removedOrders) {
             saveRestaurantOrders();
         }
@@ -3054,8 +3123,8 @@ public class HotelManagement extends Application {
     }
 
     public static class EmailSender {
-        private static final String FROM_EMAIL = "tharunadithyan2004@gmail.com"; // replace with actual
-        private static final String APP_PASSWORD = "vkgi egxl gfke gyhw"; // TODO: move to config file for production
+        private static final String FROM_EMAIL = "[tharunadithyan@gmail.com]";
+        private static final String APP_PASSWORD = "vkgi egxl gfke gyhw";
 
         public static void sendInvoice(String toEmail, String guestName, String roomNumber, File pdfFile)
                 throws Exception {

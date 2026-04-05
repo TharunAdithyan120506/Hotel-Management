@@ -302,7 +302,7 @@ public class HotelManagement extends Application {
      * ADD COLUMN aadhaar_image LONGBLOB,
      * ADD COLUMN booked_at DATETIME;
      */
-    public static class HistoryRecord {
+    public static class HistoryRecord<StringProperty> {
 
         private final StringProperty roomNumber = new SimpleStringProperty();
         private final StringProperty roomType = new SimpleStringProperty();

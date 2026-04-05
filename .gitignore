@@ -1,0 +1,38 @@
+# Compiled class files
+*.class
+
+# JAR files
+*.jar
+
+# Maven build output
+target/
+
+# Generated invoices
+/Invoice/
+
+# Temporary files
+temp.txt
+
+# Aadhaar image storage (runtime data)
+data/
+
+# Real credentials (never commit)
+hotel_settings.properties
+
+# IDE files
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Decompiled / generated sources
+DecompiledHotelManagement.java

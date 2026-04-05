@@ -1,0 +1,23 @@
+# =============================================================================
+# MIT Grand Regency — Hotel Management System Configuration
+# =============================================================================
+# Copy this file to 'hotel_settings.properties' and fill in your real values.
+# NEVER commit the real properties file to version control.
+# =============================================================================
+
+# --- Database Connection ---
+db.url=jdbc:mariadb://localhost:3306/mit_grand_regency
+db.user=tharun
+db.password=password123
+
+# --- Email (Gmail SMTP with App Password) ---
+mail.username=tharunadithyan@gmail.com
+mail.password=uiaf xohj ulag gycg
+
+# --- Pricing Defaults (used when no DB settings exist yet) ---
+price.single=1000.0
+price.double=2000.0
+price.deluxe=3500.0
+
+# --- Tax ---
+gst.rate=18.0

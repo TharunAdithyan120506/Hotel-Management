@@ -30,6 +30,7 @@ public class MainApp extends Application {
     private RestaurantView restaurantView;
     private RoomDAO roomDAO;
     private OrderDAO orderDAO;
+    private HistoryDAO historyDAO;
     private final StackPane contentArea = new StackPane();
     private final Button[] activeNavButton = { null };
 
@@ -49,7 +50,7 @@ public class MainApp extends Application {
         dbManager.ensureSchema();
 
         roomDAO = new RoomDAO(dbManager);
-        HistoryDAO historyDAO = new HistoryDAO(dbManager);
+        historyDAO = new HistoryDAO(dbManager);
         MenuDAO menuDAO = new MenuDAO(dbManager);
         orderDAO = new OrderDAO(dbManager);
         SettingsDAO settingsDAO = new SettingsDAO(dbManager);
@@ -189,6 +190,7 @@ public class MainApp extends Application {
         dashboardView.updateMetrics();
         ledgerView.updateSummary();
         roomDAO.saveAll(state.getRoomList());
+        historyDAO.saveAll(state.getHistoryList());
 
         var filter = restaurantView.getOccupiedRoomsFilter();
         if (filter != null) {
@@ -206,6 +208,7 @@ public class MainApp extends Application {
                                 && "Available".equals(r.getStatus())));
         roomDAO.saveAll(state.getRoomList());
         orderDAO.saveAll(state.getRestaurantOrderList());
+        historyDAO.saveAll(state.getHistoryList());
     }
 
     private void switchView(Node view) {

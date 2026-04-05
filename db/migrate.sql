@@ -32,3 +32,6 @@ ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS booked_at DATETIME;
 -- Migrate aadhaar_image (LONGBLOB) → aadhaar_path (VARCHAR)
 ALTER TABLE checkout_history DROP COLUMN IF EXISTS aadhaar_image;
 ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS aadhaar_path VARCHAR(255);
+
+ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(30);
+ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS transaction_id VARCHAR(100);

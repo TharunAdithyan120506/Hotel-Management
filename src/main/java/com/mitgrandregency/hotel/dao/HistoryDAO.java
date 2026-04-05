@@ -25,7 +25,7 @@ public class HistoryDAO {
         String sql = "SELECT room_number, room_type, guest_name, contact_number, "
                 + "guest_email, guest_address, check_in_date, checkout_date, "
                 + "price_per_night, nights, subtotal, tax_amount, gst_rate, "
-                + "total_paid, booked_at, aadhaar_path FROM checkout_history";
+                + "total_paid, booked_at, aadhaar_path, payment_mode, transaction_id FROM checkout_history";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -34,7 +34,7 @@ public class HistoryDAO {
                 Timestamp ts = safeGetTimestamp(rs, "booked_at");
                 LocalDateTime booked = ts != null ? ts.toLocalDateTime() : LocalDateTime.now();
 
-                target.add(new HistoryRecord(
+                HistoryRecord hr = new HistoryRecord(
                         rs.getString("room_number"),
                         safeGetString(rs, "room_type"),
                         rs.getString("guest_name"),
@@ -50,7 +50,10 @@ public class HistoryDAO {
                         safeGetDouble(rs, "gst_rate"),
                         safeGetDouble(rs, "total_paid"),
                         booked,
-                        safeGetString(rs, "aadhaar_path")));
+                        safeGetString(rs, "aadhaar_path"));
+                hr.setPaymentMode(safeGetString(rs, "payment_mode"));
+                hr.setTransactionId(safeGetString(rs, "transaction_id"));
+                target.add(hr);
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -71,7 +74,7 @@ public class HistoryDAO {
             String sql = "INSERT INTO checkout_history (room_number, room_type, guest_name, "
                     + "contact_number, guest_email, guest_address, check_in_date, checkout_date, "
                     + "price_per_night, nights, subtotal, tax_amount, gst_rate, total_paid, "
-                    + "booked_at, aadhaar_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    + "booked_at, aadhaar_path, payment_mode, transaction_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 for (HistoryRecord h : records) {
                     ps.setString(1, h.getRoomNumber());
@@ -92,6 +95,8 @@ public class HistoryDAO {
                             ? Timestamp.valueOf(h.getBookedAt())
                             : Timestamp.valueOf(LocalDateTime.now()));
                     ps.setString(16, h.getAadhaarPath());
+                    ps.setString(17, h.getPaymentMode());
+                    ps.setString(18, h.getTransactionId());
                     ps.executeUpdate();
                 }
             }

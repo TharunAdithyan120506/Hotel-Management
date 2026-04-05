@@ -26,6 +26,8 @@ public class HistoryRecord {
     private final DoubleProperty totalPaid = new SimpleDoubleProperty();
     private final ObjectProperty<LocalDateTime> bookedAt = new SimpleObjectProperty<>();
     private final StringProperty aadhaarPath = new SimpleStringProperty();
+    private final StringProperty paymentMode = new SimpleStringProperty();
+    private final StringProperty transactionId = new SimpleStringProperty();
 
     public HistoryRecord(String roomNo, String type, String guest, String contact,
                          String email, String address, String inDate, String outDate,
@@ -114,6 +116,16 @@ public class HistoryRecord {
     public void setAadhaarPath(String path) { this.aadhaarPath.set(path); }
     public StringProperty aadhaarPathProperty() { return aadhaarPath; }
 
+    // --- paymentMode ---
+    public String getPaymentMode() { return paymentMode.get(); }
+    public void setPaymentMode(String mode) { this.paymentMode.set(mode); }
+    public StringProperty paymentModeProperty() { return paymentMode; }
+
+    // --- transactionId ---
+    public String getTransactionId() { return transactionId.get(); }
+    public void setTransactionId(String tid) { this.transactionId.set(tid); }
+    public StringProperty transactionIdProperty() { return transactionId; }
+
     /**
      * Serializes record to comma-separated string for CSV export.
      */
@@ -135,6 +147,8 @@ public class HistoryRecord {
                 String.valueOf(getTotalPaid()),
                 getBookedAt() != null
                         ? getBookedAt().format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm"))
-                        : "null");
+                        : "null",
+                getPaymentMode() != null ? getPaymentMode() : "",
+                getTransactionId() != null ? getTransactionId() : "");
     }
 }

@@ -7,11 +7,14 @@
 
 # --- Database Connection ---
 db.url=jdbc:mariadb://localhost:3306/mit_grand_regency
-db.user=root
-db.password=pwd
+db.user=your_username
+db.password=your_password
+
+
 # --- Email (Gmail SMTP with App Password) ---
-mail.username=tharunadithyan@gmail.com
-mail.password=pwd
+mail.username=your_email@gmail.com
+mail.password=your_app_password
+
 # --- Pricing Defaults (used when no DB settings exist yet) ---
 price.single=1000.0
 price.double=2000.0

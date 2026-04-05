@@ -52,7 +52,9 @@ CREATE TABLE IF NOT EXISTS checkout_history (
     gst_rate         DOUBLE       DEFAULT 18,
     total_paid       DOUBLE       DEFAULT 0,
     booked_at        DATETIME,
-    aadhaar_path     VARCHAR(255)
+    aadhaar_path     VARCHAR(255),
+    payment_mode     VARCHAR(30),
+    transaction_id   VARCHAR(100)
 ) ENGINE=InnoDB;
 
 -- Restaurant menu catalogue

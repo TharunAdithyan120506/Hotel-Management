@@ -50,7 +50,7 @@ public class DatabaseManager {
                 + "guest_address VARCHAR(255), check_in_date VARCHAR(20), checkout_date VARCHAR(20),"
                 + "price_per_night DOUBLE DEFAULT 0, nights INT DEFAULT 0, subtotal DOUBLE DEFAULT 0,"
                 + "tax_amount DOUBLE DEFAULT 0, gst_rate DOUBLE DEFAULT 18, total_paid DOUBLE DEFAULT 0,"
-                + "booked_at DATETIME, aadhaar_path VARCHAR(255))",
+                + "booked_at DATETIME, aadhaar_path VARCHAR(255), payment_mode VARCHAR(30), transaction_id VARCHAR(100))",
 
             "CREATE TABLE IF NOT EXISTS menu_items ("
                 + "item_code VARCHAR(20) PRIMARY KEY, item_name VARCHAR(100),"
@@ -77,7 +77,9 @@ public class DatabaseManager {
             "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS tax_amount DOUBLE DEFAULT 0",
             "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS gst_rate DOUBLE DEFAULT 18",
             "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS booked_at DATETIME",
-            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS aadhaar_path VARCHAR(255)"
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS aadhaar_path VARCHAR(255)",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(30)",
+            "ALTER TABLE checkout_history ADD COLUMN IF NOT EXISTS transaction_id VARCHAR(100)"
         };
 
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {

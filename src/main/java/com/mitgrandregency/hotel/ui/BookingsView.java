@@ -443,6 +443,65 @@ public class BookingsView {
             Optional<ButtonType> dialogResult = dialog.showAndWait();
             if (dialogResult.isEmpty() || dialogResult.get() != btnConfirmPdf) return;
 
+            // Payment Mode Dialog
+            Dialog<ButtonType> paymentDialog = new Dialog<>();
+            paymentDialog.setTitle("Payment Details");
+            paymentDialog.setHeaderText("Select Payment Mode");
+            
+            ToggleGroup tg = new ToggleGroup();
+            RadioButton rbCash = new RadioButton("Cash");
+            RadioButton rbCard = new RadioButton("Card");
+            RadioButton rbUpi = new RadioButton("UPI");
+            RadioButton rbBank = new RadioButton("Bank Transfer");
+            rbCash.setToggleGroup(tg);
+            rbCard.setToggleGroup(tg);
+            rbUpi.setToggleGroup(tg);
+            rbBank.setToggleGroup(tg);
+            
+            TextField txtRef = new TextField();
+            txtRef.setPromptText("Transaction / Reference ID");
+            txtRef.setDisable(true);
+            
+            tg.selectedToggleProperty().addListener((obs, oldV, newV) -> {
+                if (newV == rbCash) {
+                    txtRef.setDisable(true);
+                    txtRef.clear();
+                } else if (newV != null) {
+                    txtRef.setDisable(false);
+                }
+            });
+            
+            VBox pVbox = new VBox(10, rbCash, rbCard, rbUpi, rbBank, new Label("Transaction ID:"), txtRef);
+            pVbox.setPadding(new Insets(20));
+            paymentDialog.getDialogPane().setContent(pVbox);
+            
+            ButtonType btnConfirmPayment = new ButtonType("Confirm Payment", ButtonBar.ButtonData.OK_DONE);
+            paymentDialog.getDialogPane().getButtonTypes().addAll(btnConfirmPayment, ButtonType.CANCEL);
+            
+            Button btnPaymentButton = (Button) paymentDialog.getDialogPane().lookupButton(btnConfirmPayment);
+            btnPaymentButton.setStyle("-fx-background-color: #c9a96e; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15; -fx-background-radius: 6;");
+
+            btnPaymentButton.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+                RadioButton selected = (RadioButton) tg.getSelectedToggle();
+                if (selected == null) {
+                    UIUtils.showAlert(Alert.AlertType.WARNING, "Validation Error", "Please select a payment mode.");
+                    event.consume();
+                    return;
+                }
+                if (selected != rbCash && txtRef.getText().trim().isEmpty()) {
+                    UIUtils.showAlert(Alert.AlertType.WARNING, "Validation Error", "Please enter a Transaction / Reference ID.");
+                    event.consume();
+                    return;
+                }
+            });
+            
+            Optional<ButtonType> payRes = paymentDialog.showAndWait();
+            if (payRes.isEmpty() || payRes.get() != btnConfirmPayment) return;
+            
+            RadioButton selectedRb = (RadioButton) tg.getSelectedToggle();
+            record.setPaymentMode(selectedRb.getText());
+            record.setTransactionId(txtRef.getText().trim());
+
             // File chooser
             if (!INVOICE_DIR.exists()) INVOICE_DIR.mkdirs();
             FileChooser fileChooser = new FileChooser();

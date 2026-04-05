@@ -113,7 +113,9 @@ CREATE TABLE checkout_history (
     gst_rate         DOUBLE DEFAULT 18,
     total_paid       DOUBLE DEFAULT 0,
     booked_at        DATETIME,
-    aadhaar_path     VARCHAR(255)
+    aadhaar_path     VARCHAR(255),
+    payment_mode     VARCHAR(30),
+    transaction_id   VARCHAR(100)
 );
 
 CREATE TABLE menu_items (
@@ -199,7 +201,7 @@ Hotel-Management/
 - **Inventory Management** — Add/remove rooms, CSV bulk import
 - **Dining & POS** — Menu management with CSV import, room-linked ordering for occupied rooms
 - **Housekeeping** — Cleaning queue with urgent priority highlighting, one-click mark-as-available
-- **Financial Ledger** — Complete checkout history, re-invoice PDF generation, CSV ledger export
+- **Financial Ledger** — Complete checkout history, multi-mode payment tracking (Cash/Card/UPI) with transaction ID validation, re-invoice PDF generation, CSV ledger export
 - **PDF Invoicing** — Branded invoices with room charges, restaurant line items, and GST breakdown
 - **Email Notifications** — Send invoices via Gmail SMTP with branded HTML email
 - **Settings** — Configurable room pricing and GST rates, persisted to database
